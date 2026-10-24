@@ -55,7 +55,15 @@ If the website is being hosted instead of run locally, add the same two variable
 
 ### Database setup and launch checks
 
-1. Apply migrations in timestamp order from `supabase/migrations/` in a development project first. Review and test every RLS policy and RPC before production.
+1. Create a separate Supabase development project first; never test migrations against production accounts or data. Open the development project's SQL Editor.
+   - Start with migration `202610240001_initial_schema.sql` and run every migration in `supabase/migrations/` from oldest to newest.
+   - Run one migration at a time. Do not continue after an error; correct the migration or project setup and rerun it before moving forward.
+   - Do not run `supabase db push` without linking and reviewing the migration history first. Supabase dashboard migration history can differ from repository filenames.
+   - Test signup, login, profile updates, saved events, event submissions, reports, blocks, and account deletion in the development project only.
+   - Confirm Auth email confirmation, redirect URLs, password policy, and abuse protection in the development project before applying equivalent settings to production.
+   - After development tests pass, repeat migrations and settings in the production project using controlled change records and backups.
+
+Apply migrations in timestamp order from `supabase/migrations/` in a development project first. Review and test every RLS policy and RPC before production.
    - Migration `202610240007_participation_policy_hardening.sql` introduces a default-false adult eligibility flag and allows participation only for verified adults attending published upcoming events.
    - Migration `202610240008_data_api_table_grants.sql` explicitly grants only the browser operations covered by RLS; grants determine whether a role can reach a table, while RLS determines which rows it can access.
    - Migration `202610240009_adult_verification_gate.sql` limits profile discovery, participant access, group membership, messaging, and match visibility to eligible adult users and preserves block checks.

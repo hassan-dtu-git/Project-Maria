@@ -7,6 +7,14 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
 
+function authErrorMessage(error) {
+  const message = String(error?.message || '').toLowerCase();
+  if (message.includes('rate limit') || message.includes('email rate limit') || error?.status === 429) {
+    return 'Email rate limit exceeded. Wait about an hour, then try again. Supabase also offers an SMTP setup to avoid this limit.';
+  }
+  return error?.message || 'Authentication failed. Please try again.';
+}
+
 const events = [
   { id: 1, title: 'Indie Night Live', category: 'Music', date: 'Fri, 30 Oct · 7:30 PM', startsAt: '2026-10-30T19:30:00+05:30', place: 'The Courtyard, Delhi', people: 18, price: 'From ₹499', color: 'lavender', icon: Music2, description: 'An intimate live set for people who love discovering new sounds.' },
   { id: 2, title: 'Sunday Sketch Club', category: 'Art', date: 'Sun, 1 Nov · 11:00 AM', startsAt: '2026-11-01T11:00:00+05:30', place: 'Lodhi Art District, Delhi', people: 9, price: 'Free to join', color: 'peach', icon: Sparkles, description: 'Bring a sketchbook, meet local creatives, and make something together.' },
@@ -590,7 +598,7 @@ export default function App() {
   async function handleAuth(event) {
     event.preventDefault(); setAuthMessage('');
     if (!email.trim() || !password) { setAuthMessage('Enter your email and password.'); return; }
-    if (password.length < 8) { setAuthMessage('Use a password with at least 8 characters.'); return; }
+    if (password.length < 8 || password.length > 128) { setAuthMessage('Use a password between 8 and 128 characters.'); return; }
     if (!supabase) { setAuthMessage('Authentication is not connected yet. Add the Supabase URL and anon key in your deployment environment to enable real accounts.'); return; }
     setAuthBusy(true);
     try {
@@ -604,7 +612,7 @@ export default function App() {
         if (error) throw error;
         setUser(data.user); navigate('events');
       }
-    } catch (error) { setAuthMessage(error.message || 'Authentication failed. Please try again.'); }
+    } catch (error) { setAuthMessage(authErrorMessage(error)); }
     finally { setAuthBusy(false); }
   }
   async function requestPasswordReset(event) {
@@ -627,7 +635,7 @@ export default function App() {
       if (error) throw error;
       setAuthMessage('If an account exists for that address, a password-reset link will arrive by email. Open it to choose a new password.');
     } catch (error) {
-      setAuthMessage(error.message || 'Could not request a password reset. Please try again.');
+      setAuthMessage(authErrorMessage(error) || 'Could not request a password reset. Please try again.');
     } finally {
       setAuthBusy(false);
     }
@@ -636,8 +644,8 @@ export default function App() {
   async function updateRecoveredPassword(event) {
     event.preventDefault();
     setAuthMessage('');
-    if (password.length < 8) {
-      setAuthMessage('Use a password with at least 8 characters.');
+    if (password.length < 8 || password.length > 128) {
+      setAuthMessage('Use a password between 8 and 128 characters.');
       return;
     }
     if (password !== recoveryPasswordConfirm) {
@@ -676,8 +684,8 @@ export default function App() {
       setAccountDeletionError('Sign in to a connected account before deleting it.');
       return;
     }
-    if (accountDeletionConfirmation !== 'DELETE') {
-      setAccountDeletionError('Type DELETE exactly to confirm permanent deletion.');
+    if (accountDeletionConfirmation !== 'DELETE' || accountDeletionPassword.length > 128) {
+      setAccountDeletionError('Type DELETE exactly and verify the current password.');
       return;
     }
     if (!accountDeletionPassword) {
@@ -789,6 +797,10 @@ export default function App() {
   }
   async function reportUser() {
     if (!user) { navigate('login'); setToast('Sign in to submit a report.'); return; }
+    if (reportDetails.trim().length > 2000) {
+      setReportError('Keep report details under 2000 characters.');
+      return;
+    }
     if (!supabase) {
       setReportError('Report submission requires a connected, signed-in account. No report was sent.');
       return;
@@ -798,6 +810,10 @@ export default function App() {
       : { event_id: reporting?.id || reportEventId };
     if (!target.reported_user_id && !target.event_id) {
       setReportError('Choose a published event to attach this report to.');
+      return;
+    }
+    if (target.reported_user_id === user.id) {
+      setReportError('You cannot report your own profile.');
       return;
     }
     const selectedEvent = target.event_id
