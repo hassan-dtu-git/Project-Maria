@@ -21,7 +21,7 @@ const timeOptions = ['Weekday mornings', 'Weekday evenings', 'Weekend mornings',
 
 function getInitialPage() {
   const hash = window.location.hash.replace('#', '');
-  return ['events', 'how-it-works', 'safety', 'terms', 'privacy', 'guidelines', 'login', 'signup', 'forgot-password', 'reset-password', 'matches', 'people', 'profile', 'quiz', 'submit-event'].includes(hash) ? hash : 'home';
+  return ['events', 'how-it-works', 'safety', 'terms', 'privacy', 'guidelines', 'login', 'signup', 'forgot-password', 'reset-password', 'matches', 'people', 'profile', 'quiz', 'submit-event', 'moderation'].includes(hash) ? hash : 'home';
 }
 
 export default function App() {
@@ -80,6 +80,10 @@ export default function App() {
   const [submissionBusy, setSubmissionBusy] = useState(false);
   const [submissionMessage, setSubmissionMessage] = useState('');
   const [mySubmissions, setMySubmissions] = useState([]);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [moderationQueue, setModerationQueue] = useState([]);
+  const [moderationBusyId, setModerationBusyId] = useState('');
+  const [moderationMessage, setModerationMessage] = useState('');
 
   useEffect(() => {
     const onHash = () => { setPage(getInitialPage()); setMobileOpen(false); window.scrollTo(0, 0); };
@@ -418,6 +422,26 @@ export default function App() {
     finally { setSubmissionBusy(false); }
   }
 
+
+  async function reviewSubmission(item, status) {
+    if (!supabase || !user || !isAdmin) return;
+    const note = window.prompt(status === 'approved' ? 'Optional moderator note for approval:' : 'Reason for rejecting this submission:');
+    if (note === null) return;
+    if (status === 'rejected' && !note.trim()) { setModerationMessage('Add a short reason before rejecting.'); return; }
+    setModerationBusyId(item.id); setModerationMessage('');
+    try {
+      const { error } = await supabase.from('event_submissions').update({
+        status, moderator_notes: note.trim() || null, reviewed_by: user.id, reviewed_at: new Date().toISOString()
+      }).eq('id', item.id).eq('status','pending');
+      if (error) throw error;
+      setModerationQueue(current => current.filter(entry => entry.id !== item.id));
+      setModerationMessage(status === 'approved'
+        ? 'Submission approved for the next publishing step. It is not yet automatically copied to public events.'
+        : 'Submission rejected and removed from the pending queue.');
+    } catch (error) { setModerationMessage(error.message || 'Could not update this submission.'); }
+    finally { setModerationBusyId(''); }
+  }
+
   async function handleSwipe(person, action) {
     if (!user) { navigate('login'); return; }
     if (!adultVerificationChecked || !adultVerified) {
@@ -690,7 +714,7 @@ export default function App() {
         <a href="#events" className={page === 'events' ? 'active' : ''}>Explore events</a>
         <a href="#people" className={page === 'people' ? 'active' : ''}>Meet people</a>
         <a href="#quiz" className={page === 'quiz' ? 'active' : ''}>Match quiz</a>
-        <a href="#submit-event" className={page === 'submit-event' ? 'active' : ''}>Submit an event</a>
+        <a href="#submit-event" className={page === 'submit-event' ? 'active' : ''}>Submit an event</a>\n        {isAdmin && <a href="#moderation" className={page === 'moderation' ? 'active' : ''}>Review events</a>}
         <a href="#how-it-works" className={page === 'how-it-works' ? 'active' : ''}>How it works</a>
         <a href="#safety" className={page === 'safety' ? 'active' : ''}>Safety</a>
         {user ? <><a href="#matches">My list <span className="count">{saved.length}</span></a><button className="nav-login" onClick={signOut}>Sign out</button></> : <><a href="#login" className="nav-login">Log in</a><a href="#signup" className="button button-small">Get started <ArrowRight size={15}/></a></>}
@@ -704,7 +728,19 @@ export default function App() {
       </section><section className="trust-strip"><div><ShieldCheck size={18}/><span>Adults-only social features</span></div><span className="strip-divider"/><div><Users size={18}/><span>Friendship-first by design</span></div><span className="strip-divider"/><div><MapPin size={18}/><span>Plans that happen in real life</span></div></section><section className="section featured"><div className="section-heading"><div><div className="eyebrow">MAKE A PLAN</div><h2>Something good is happening.</h2><p>Find an event. Find your people. Go together.</p></div><button className="text-button" onClick={() => navigate('events')}>Explore all events <ArrowRight size={16}/></button></div><EventGrid items={displayedEvents.slice(0,3)} onSelect={setSelectedEvent} saved={saved} onSave={toggleSave}/></section><section className="how-band"><div className="eyebrow">NO AWKWARD GUESSWORK</div><h2>From “I want to go”<br/>to “see you there.”</h2><div className="steps"><Step number="01" title="Find your thing" text="Explore local events that you'd genuinely enjoy."/><Step number="02" title="Meet your people" text="See who's interested and connect around a shared plan."/><Step number="03" title="Make it happen" text="Chat, coordinate, and head out with your new crew."/></div><button className="button button-light" onClick={() => navigate('events')}>Explore events <ArrowRight size={16}/></button></section></>}
 
 
-      {page === 'submit-event' && <section className="page-section narrow">
+
+      {page === 'moderation' && <section className="page-section narrow">
+        <div className="eyebrow">ADMINISTRATION</div><h1 className="page-title">Event <em>review queue.</em></h1>
+        {!user ? <div className="empty-state"><h3>Sign in with an authorized admin account</h3><button className="button" onClick={() => navigate('login')}>Log in <ArrowRight size={16}/></button></div> : !isAdmin ? <div className="empty-state"><ShieldCheck size={27}/><h3>Administrator access required</h3><p>Only accounts explicitly marked as administrators can access this queue.</p></div> : <>
+          <p className="page-intro">Review community-submitted events before publication. Approval here records the review decision; automatic publishing is a separate step not yet enabled.</p>
+          {moderationMessage && <p className="form-message" role="status">{moderationMessage}</p>}
+          {moderationQueue.length ? <div className="submission-list">{moderationQueue.map(item=><article className="moderation-card" key={item.id}>
+            <div className="eyebrow">{item.category} · Submitted {new Date(item.created_at).toLocaleDateString()}</div><h2>{item.title}</h2><p>{item.description}</p><p className="muted">{item.venue_name}, {item.city} · {new Date(item.starts_at).toLocaleString()}</p>{item.ends_at && <p className="muted">Ends {new Date(item.ends_at).toLocaleString()}</p>}{item.booking_url && <p><a href={item.booking_url} target="_blank" rel="noreferrer">Open event source ↗</a></p>}
+            <div className="moderation-actions"><button className="button" disabled={!!moderationBusyId} onClick={()=>reviewSubmission(item,'approved')}>Approve</button><button className="button button-outline" disabled={!!moderationBusyId} onClick={()=>reviewSubmission(item,'rejected')}>Reject</button></div>
+          </article>)}</div> : <div className="empty-state"><Check size={27}/><h3>Queue is clear</h3><p>No pending event submissions.</p></div>}
+        </>}
+      </section>}
+\n      {page === 'submit-event' && <section className="page-section narrow">
         <div className="eyebrow">COMMUNITY EVENT SUBMISSIONS</div><h1 className="page-title">Know something <em>happening?</em></h1>
         <p className="page-intro">Submit a public event for review. Submissions stay private until an authorized moderator approves them.</p>
         {!user ? <div className="empty-state"><h3>Log in to submit an event</h3><button className="button" onClick={() => navigate('login')}>Log in <ArrowRight size={16}/></button></div> : <form className="quiz-panel" onSubmit={submitEvent}>
