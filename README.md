@@ -2,17 +2,17 @@
 
 Maria is an event-first social discovery website: discover an event, find people interested in the same plan, and coordinate going together.
 
-## Current branch
+## Current implementation
 
-The `build/mvp-foundation` branch contains the first React/Vite website foundation:
-- Responsive landing page and event discovery with category/search filters.
-- Event detail modal and locally saved events.
-- How-it-works, safety, community guidelines, terms, and privacy pages.
-- Sign-up/login screens with optional Supabase Auth wiring.
-- Basic UI reporting flow, clearly marked as a non-persisted prototype.
-- Responsive layout, focus-visible styles, and reduced-motion support.
+The `build/mvp-foundation` branch contains:
+- Responsive React/Vite landing page and event discovery with search/category filters.
+- Event details, in-page saved-event list, and responsive navigation.
+- Safety guidance, community guidelines, and draft Terms and Privacy pages.
+- Sign-up/login UI with optional Supabase Auth integration.
+- Supabase/Postgres schema migrations for profiles, events, participation, swipes, matches, groups, messages, blocks, reports, terms acceptance, RLS, event-scoped swipe/match RPC, and basic swipe rate limiting.
+- CI workflow for a production frontend build.
 
-**This is a prototype, not a production-ready service.** Event listings are sample data. Saved events are in-memory only. Reporting is not delivered to moderators. Matching, group membership, chat, account deletion, email recovery, moderation operations, and rate limiting are not implemented yet.
+**This is still a prototype, not a production-ready service.** Event listings are sample data. Saved events are in-memory only. The website's reporting UI is not connected to the reports table or a moderator queue. Real event discovery, persistent saved events, matching UI, group join UI, messaging UI, profile editing, account deletion, password recovery, moderation operations, and comprehensive rate limits are not implemented.
 
 ## Run locally
 
@@ -26,25 +26,26 @@ npm run dev
 
 Open the local URL printed by Vite. Without environment variables, the UI runs in preview mode and authentication intentionally does not pretend to create real accounts.
 
-## Supabase Auth configuration
+## Supabase setup
 
-Set the following in `.env.local` and your deployment provider:
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_ANON_KEY`
+1. Create a Supabase project for development.
+2. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in `.env.local` and the deployment provider.
+3. Apply migrations in timestamp order from `supabase/migrations/` in a non-production project first. Review and test every RLS policy and RPC before production.
+4. Configure email confirmation, allowed redirect URLs, password policy, Auth abuse protection, backups, and monitoring.
+5. Provision admin access only through trusted server-side tooling. Never expose a Supabase service-role key in a `VITE_*` variable or client bundle.
 
-Use only the public anon/publishable key in browser code. **Never expose a Supabase service-role key in a `VITE_*` variable or client bundle.** Configure email confirmation, password policy, redirect URLs, abuse protection, and database Row Level Security in Supabase before production use.
+The database migrations have been committed to the repository, but **they have not been applied to a Supabase project or tested against a live database**. Do not assume that the backend is live.
 
-## Required before public launch
+## Security and traffic control
 
-1. Design and apply database migrations for profiles, events, event participation, likes, matches, groups, memberships, messages, blocks, reports, and moderation actions.
-2. Enforce all ownership, match, group, and message access rules in Postgres RLS and trusted server-side functions; never trust client checks alone.
-3. Add server-side rate limits for authentication-sensitive actions, likes, messages, report submissions, and event creation; configure hosting/WAF limits and monitoring.
-4. Implement real match creation, block enforcement, report persistence, moderation queues, audit logs, and escalation/retention policies.
-5. Implement profile editing, account deletion/export requests, password reset, email verification, and consent/version records for terms.
-6. Replace sample events with a verified event source and validate all outbound links.
-7. Add automated unit/integration/e2e tests, dependency/security scans, accessibility checks, and CI deployment gates.
-8. Have qualified counsel review Terms and Privacy Policy for the actual operator, markets, and data practices.
+The database includes RLS policies, event-scoped swipe/match logic, block-aware checks, group membership helpers, and a basic limit of 30 swipe attempts per authenticated user per minute. This is only a starting layer. Before launch, add edge/WAF/IP rate limits, abuse controls for messages/reports/authentication/group creation, moderation workflows, security monitoring, and end-to-end tests. Read [the security and launch checklist](docs/SECURITY_AND_LAUNCH_CHECKLIST.md).
+
+Never rely on client-side checks for authorization. Use Postgres RLS and trusted server-side functions.
 
 ## Quality checks
 
-`npm run build` runs the Vite production build. `npm test` is reserved for Node test files; meaningful tests still need to be added. Do not interpret a successful frontend build as proof of security or end-to-end correctness.
+- `npm run build` runs the Vite production build.
+- `npm test` runs Node test files; meaningful automated tests still need to be added.
+- The CI workflow checks the frontend build; it does not validate SQL migrations, security policies, or real user flows.
+
+Do not interpret a successful frontend build as proof of security or end-to-end correctness. The Terms and Privacy pages are drafts and require review by qualified counsel for the actual operator, launch jurisdiction, and live data practices.
