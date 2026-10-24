@@ -52,6 +52,7 @@ If the website is being hosted instead of run locally, add the same two variable
 ### Database setup and launch checks
 
 1. Apply migrations in timestamp order from `supabase/migrations/` in a non-production project first. Review and test every RLS policy and RPC before production.
+   The final `202610240008_data_api_table_grants.sql` migration explicitly grants only the browser operations covered by RLS. This is necessary for new Supabase projects where public-schema tables are not automatically exposed through the Data API.
 2. Configure email confirmation, allowed redirect URLs, password policy, Auth abuse protection, backups, and monitoring.
 3. Provision admin access only through trusted server-side tooling. Never expose a Supabase service-role key in a `VITE_*` variable or client bundle.
 
