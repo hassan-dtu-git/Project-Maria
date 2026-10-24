@@ -41,6 +41,11 @@ export default function App() {
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMessage, setProfileMessage] = useState('');
+  const [accountDeletionOpen, setAccountDeletionOpen] = useState(false);
+  const [accountDeletionPassword, setAccountDeletionPassword] = useState('');
+  const [accountDeletionConfirmation, setAccountDeletionConfirmation] = useState('');
+  const [accountDeletionBusy, setAccountDeletionBusy] = useState(false);
+  const [accountDeletionError, setAccountDeletionError] = useState('');
   const [authBusy, setAuthBusy] = useState(false);
   const [authMessage, setAuthMessage] = useState('');
   const [reporting, setReporting] = useState(null);
@@ -443,6 +448,67 @@ export default function App() {
   }
 
   async function signOut() { if (supabase) await supabase.auth.signOut(); setUser(null); navigate('home'); setToast('You have signed out.'); }
+  async function deleteAccount(event) {
+    event.preventDefault();
+    setAccountDeletionError('');
+    if (!user?.email || !supabase) {
+      setAccountDeletionError('Sign in to a connected account before deleting it.');
+      return;
+    }
+    if (accountDeletionConfirmation !== 'DELETE') {
+      setAccountDeletionError('Type DELETE exactly to confirm permanent deletion.');
+      return;
+    }
+    if (!accountDeletionPassword) {
+      setAccountDeletionError('Enter your current password to verify it is you.');
+      return;
+    }
+
+    setAccountDeletionBusy(true);
+    try {
+      const { error: reauthError } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password: accountDeletionPassword
+      });
+      if (reauthError) {
+        throw new Error('Password verification failed. Check your current password and try again.');
+      }
+
+      const { error: deletionError } = await supabase.functions.invoke('delete-account', {
+        body: { confirmation: accountDeletionConfirmation }
+      });
+      if (deletionError) {
+        let message = deletionError.message || 'The account could not be deleted.';
+        try {
+          const context = deletionError.context;
+          if (context && typeof context.clone === 'function') {
+            const payload = await context.clone().json();
+            if (typeof payload?.error === 'string') message = payload.error;
+          }
+        } catch {
+          // Keep the non-sensitive fallback message.
+        }
+        throw new Error(message);
+      }
+
+      await supabase.auth.signOut({ scope: 'local' });
+      setAccountDeletionOpen(false);
+      setAccountDeletionPassword('');
+      setAccountDeletionConfirmation('');
+      setUser(null);
+      setSaved([]);
+      setJoinedEventIds([]);
+      setDiscoveryPeople([]);
+      setProfileData({ display_name: '', bio: '', city: '' });
+      navigate('home');
+      setToast('Your Maria account has been deleted.');
+    } catch (error) {
+      setAccountDeletionError(error.message || 'Account deletion failed. Please try again.');
+    } finally {
+      setAccountDeletionBusy(false);
+    }
+  }
+
   async function saveProfile(event) {
     event.preventDefault();
     setProfileMessage('');
@@ -582,12 +648,13 @@ export default function App() {
         <div className="safety-callout"><ShieldCheck size={20}/><span>Keep conversations respectful and meet in public places. <a href="#safety">Review safety guidance</a>. Messaging is not connected yet.</span></div>
       </section>}
 
-      {page === 'profile' && <section className="page-section narrow"><div className="eyebrow">YOUR ACCOUNT</div><h1 className="page-title">Make it <em>you.</em></h1>{user ? <div className="profile-panel"><div className="profile-avatar">{(profileData.display_name || user.email || 'M').slice(0,1).toUpperCase()}</div><h2>{profileData.display_name || 'Maria member'}</h2><p>{user.email}</p>{profileLoading ? <p className="muted">Loading your profile…</p> : <form onSubmit={saveProfile}><label className="field-label">Display name<input value={profileData.display_name} onChange={e => setProfileData(current => ({ ...current, display_name: e.target.value }))} autoComplete="name" maxLength={60} required /></label><label className="field-label">Bio<textarea value={profileData.bio} onChange={e => setProfileData(current => ({ ...current, bio: e.target.value }))} maxLength={500} rows={4} placeholder="A little about your interests (optional)." /></label><label className="field-label">City<input value={profileData.city} onChange={e => setProfileData(current => ({ ...current, city: e.target.value }))} autoComplete="address-level2" maxLength={100} placeholder="City (optional)" /></label>{profileMessage && <p className="form-message" role="status">{profileMessage}</p>}<button className="button" disabled={profileSaving || profileLoading}>{profileSaving ? 'Saving…' : 'Save profile'} <Check size={16}/></button></form>}<p className="muted">Adult eligibility, account privileges, and safety status cannot be changed from this page. Account deletion and privacy controls still need implementation.</p><button className="button button-outline" onClick={signOut}>Sign out</button></div> : <div className="empty-state"><Users size={27}/><h3>Sign in to continue</h3><button className="button" onClick={() => navigate('login')}>Log in <ArrowRight size={16}/></button></div>}<div className="safety-callout"><ShieldCheck size={20}/><span>Review our <a href="#safety">safety guidance</a> before meeting anyone from an online service.</span></div></section>}
+      {page === 'profile' && <section className="page-section narrow"><div className="eyebrow">YOUR ACCOUNT</div><h1 className="page-title">Make it <em>you.</em></h1>{user ? <div className="profile-panel"><div className="profile-avatar">{(profileData.display_name || user.email || 'M').slice(0,1).toUpperCase()}</div><h2>{profileData.display_name || 'Maria member'}</h2><p>{user.email}</p>{profileLoading ? <p className="muted">Loading your profile…</p> : <form onSubmit={saveProfile}><label className="field-label">Display name<input value={profileData.display_name} onChange={e => setProfileData(current => ({ ...current, display_name: e.target.value }))} autoComplete="name" maxLength={60} required /></label><label className="field-label">Bio<textarea value={profileData.bio} onChange={e => setProfileData(current => ({ ...current, bio: e.target.value }))} maxLength={500} rows={4} placeholder="A little about your interests (optional)." /></label><label className="field-label">City<input value={profileData.city} onChange={e => setProfileData(current => ({ ...current, city: e.target.value }))} autoComplete="address-level2" maxLength={100} placeholder="City (optional)" /></label>{profileMessage && <p className="form-message" role="status">{profileMessage}</p>}<button className="button" disabled={profileSaving || profileLoading}>{profileSaving ? 'Saving…' : 'Save profile'} <Check size={16}/></button></form>}<p className="muted">Adult eligibility, account privileges, and safety status cannot be changed from this page.</p><button className="button button-outline" onClick={signOut}>Sign out</button><div className="danger-zone"><h3>Delete account</h3><p>This permanently removes your Maria account and linked profile data. This action cannot be undone.</p><button className="button button-danger" onClick={() => {setAccountDeletionError('');setAccountDeletionPassword('');setAccountDeletionConfirmation('');setAccountDeletionOpen(true);}}>Delete my account</button></div></div> : <div className="empty-state"><Users size={27}/><h3>Sign in to continue</h3><button className="button" onClick={() => navigate('login')}>Log in <ArrowRight size={16}/></button></div>}<div className="safety-callout"><ShieldCheck size={20}/><span>Review our <a href="#safety">safety guidance</a> before meeting anyone from an online service.</span></div></section>}
     </main>
 
     <footer className="site-footer"><div className="footer-top"><a className="brand footer-brand" href="#" onClick={e => {e.preventDefault();navigate('home')}}><span className="brand-mark">m.</span><span>maria</span></a><p>Make plans. Find your people.<br/>Go together.</p><button className="button button-light" onClick={() => navigate('events')}>Find a plan <ArrowRight size={15}/></button></div><div className="footer-bottom"><span>© 2026 Maria. Built around doing things together.</span><div><a href="#safety">Safety</a><a href="#guidelines">Guidelines</a><a href="#terms">Terms</a><a href="#privacy">Privacy</a></div><span className="preview-label">EARLY PREVIEW</span></div></footer>
 
     {selectedEvent && <div className="modal-backdrop" role="presentation" onMouseDown={e => {if(e.target === e.currentTarget) setSelectedEvent(null)}}><section className="event-modal" role="dialog" aria-modal="true" aria-labelledby="event-modal-title"><button className="modal-close" onClick={() => setSelectedEvent(null)} aria-label="Close event details"><X size={20}/></button><div className={'event-art modal-art ' + selectedEvent.color}><selectedEvent.icon size={42}/><span>{selectedEvent.category}</span></div><div className="modal-content"><div className="eyebrow">EVENT DETAILS</div><h2 id="event-modal-title">{selectedEvent.title}</h2><p>{selectedEvent.description}</p><div className="modal-meta"><span><CalendarDays size={17}/>{selectedEvent.date}</span><span><MapPin size={17}/>{selectedEvent.place}</span><span><Users size={17}/>{selectedEvent.people} interested</span></div><div className="modal-price">{selectedEvent.price}</div><div className="modal-actions"><button className="button" onClick={() => {toggleSave(selectedEvent.id);}}>{saved.includes(selectedEvent.id) ? <span><Check size={16}/> Saved</span> : <span><Heart size={16}/> Save this event</span>}</button>{selectedEvent.isLive ? <button className="button button-outline" disabled={joinBusy || joinedEventIds.includes(selectedEvent.id) || (!!user && (!adultVerificationChecked || !adultVerified))} onClick={() => joinEvent(selectedEvent)}>{joinedEventIds.includes(selectedEvent.id) ? <span><Check size={16}/> Interested</span> : joinBusy ? 'Saving…' : !user ? <span>Log in to mark interest <ArrowRight size={16}/></span> : !adultVerificationChecked ? 'Checking eligibility…' : !adultVerified ? 'Participation unavailable' : <span>Mark interest <ArrowRight size={16}/></span>}</button> : <button className="button button-outline" onClick={() => {setSelectedEvent(null);navigate(user ? 'people' : 'signup')}}>Find people <ArrowRight size={16}/></button>}</div>{joinMessage && <p className="form-message" role="status">{joinMessage}</p>}{selectedEvent.isLive && <button className="text-button" onClick={() => openReport({ type: 'event', id: selectedEvent.id, label: selectedEvent.title })}><ShieldCheck size={15}/> Report this event</button>}{selectedEvent.bookingUrl && <p><a href={selectedEvent.bookingUrl} target="_blank" rel="noreferrer">Visit event details ↗</a></p>}<p className="demo-notice">{selectedEvent.isLive ? 'Published listing. Check the organizer’s details before attending.' : 'Sample listing only. Confirm event details with the organizer before making plans.'}</p></div></section></div>}
+    {accountDeletionOpen && <div className="modal-backdrop" role="presentation" onMouseDown={e => {if (e.target === e.currentTarget && !accountDeletionBusy) setAccountDeletionOpen(false);}}><section className="small-modal" role="dialog" aria-modal="true" aria-labelledby="delete-account-title"><button className="modal-close" onClick={() => setAccountDeletionOpen(false)} disabled={accountDeletionBusy} aria-label="Close account deletion"><X size={20}/></button><div className="eyebrow">PERMANENT ACTION</div><h2 id="delete-account-title">Delete your account?</h2><p>This permanently deletes your Maria login and linked profile. Linked account data may be removed according to database relationships; some reports may also be deleted with the account. This action cannot be undone.</p><form onSubmit={deleteAccount}><label className="field-label">Current password<input type="password" value={accountDeletionPassword} onChange={e => setAccountDeletionPassword(e.target.value)} autoComplete="current-password" required maxLength={128}/></label><label className="field-label">Type DELETE to confirm<input value={accountDeletionConfirmation} onChange={e => setAccountDeletionConfirmation(e.target.value)} autoComplete="off" required maxLength={20} spellCheck="false" /></label>{accountDeletionError && <p className="form-message" role="alert">{accountDeletionError}</p>}<div className="modal-actions"><button type="button" className="button button-outline" onClick={() => setAccountDeletionOpen(false)} disabled={accountDeletionBusy}>Cancel</button><button type="submit" className="button button-danger" disabled={accountDeletionBusy}>{accountDeletionBusy ? 'Deleting account…' : 'Permanently delete'}</button></div></form></section></div>}
     {reporting && <div className="modal-backdrop" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget && !reportBusy) closeReport(); }}><section className="small-modal" role="dialog" aria-modal="true" aria-labelledby="report-title"><button className="modal-close" onClick={closeReport} disabled={reportBusy} aria-label="Close report"><X size={20}/></button><h2 id="report-title">Report a concern</h2>{reportSubmitted ? <><p>Your report was saved to Maria’s reports table. The moderation queue and moderator notifications are not connected yet, so this prototype cannot confirm that anyone has reviewed it.</p><button className="button" onClick={closeReport}>Close</button></> : <><p>Choose the reason that best fits. Only include details relevant to this event or profile; avoid unnecessary personal information.</p>{reporting.type === 'user' ? <p className="demo-notice">Reporting profile: <strong>{reporting.label || 'Maria member'}</strong></p> : reporting.id ? <p className="demo-notice">Reporting published event: <strong>{reporting.label || 'Event'}</strong></p> : <label className="field-label">Published event<select value={reportEventId} onChange={e => setReportEventId(e.target.value)} required><option value="">Choose an event…</option>{liveEvents.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>}{!user && <p className="form-message" role="status">Sign in before submitting a report.</p>}<label className="field-label">Reason<select value={reportReason} onChange={e => setReportReason(e.target.value)}><option value="harassment">Harassment or threats</option><option value="spam">Spam or unsolicited promotion</option><option value="fake_profile">Fake profile or scam</option><option value="unsafe_behavior">Unsafe behavior</option><option value="inappropriate_content">Inappropriate content or behavior</option><option value="other">Other / privacy concern</option></select></label><label className="field-label">Details (optional)<textarea value={reportDetails} onChange={e => setReportDetails(e.target.value)} maxLength={2000} rows={4} placeholder="Add only relevant context (up to 2,000 characters)." /></label>{reportError && <p className="form-message" role="alert">{reportError}</p>}{user ? <button className="button" disabled={reportBusy} onClick={reportUser}>{reportBusy ? 'Submitting…' : 'Submit report'} <ArrowRight size={16}/></button> : <button className="button" onClick={() => {closeReport();navigate('login')}}>Log in to submit report <ArrowRight size={16}/></button>}</>}</section></div>}
     {toast && <div className="toast" role="status">{toast}</div>}
     <button className="report-shortcut" onClick={() => openReport({ type: 'event' })} title="Report a safety concern"><ShieldCheck size={17}/><span>Safety</span></button>
