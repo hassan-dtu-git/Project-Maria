@@ -45,7 +45,6 @@ export default function App() {
   const [reportBusy, setReportBusy] = useState(false);
   const [reportError, setReportError] = useState('');
   const [reportSubmitted, setReportSubmitted] = useState(false);
-  const [reportPersisted, setReportPersisted] = useState(false);
   const [eventsLoadError, setEventsLoadError] = useState('');
   const [liveEvents, setLiveEvents] = useState([]);
   const [joinedEventIds, setJoinedEventIds] = useState([]);
@@ -345,14 +344,12 @@ export default function App() {
     setReportEventId('');
     setReportError('');
     setReportSubmitted(false);
-    setReportPersisted(false);
   }
   function closeReport() {
     setReporting(null);
     setReportError('');
     setReportDetails('');
     setReportSubmitted(false);
-    setReportPersisted(false);
   }
   async function reportUser() {
     if (!user) { navigate('login'); setToast('Sign in to submit a report.'); return; }
@@ -384,7 +381,6 @@ export default function App() {
         details: reportDetails.trim()
       });
       if (error) throw error;
-      setReportPersisted(true);
       setReportSubmitted(true);
     } catch (error) {
       setReportError(error.message || 'Could not submit the report. Please try again.');
