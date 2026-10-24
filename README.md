@@ -11,11 +11,12 @@ The `build/mvp-foundation` branch contains:
 - Adult verification defaults to false and cannot be set by a normal browser session. A real verification workflow is not implemented; do not manually mark ordinary accounts verified.
 - Safety guidance, community guidelines, and draft Terms and Privacy pages.
 - Sign-up/login UI with optional Supabase Auth integration.
+- Supabase Auth password recovery: request a reset email, return through the allowlisted `#reset-password` route, and update the password in a recovery session.
 - Signed-in users can edit their own display name, bio, and city through the RLS-protected profiles table.
 - Supabase/Postgres schema migrations for profiles, events, participation, swipes, matches, groups, messages, blocks, reports, terms acceptance, RLS, event-scoped swipe/match RPC, and basic swipe rate limiting.
 - CI workflow for a production frontend build.
 
-**This is still a prototype, not a production-ready service.** If Supabase is configured and has published future events, the website loads those listings; otherwise it uses sample listings. Saved published events are stored per signed-in user; sample-event saves remain temporary preview state. Adult eligibility is fail-closed in the database, with all profiles unverified by default. There is no production adult-verification workflow, so participation and user-to-user social features are intentionally unavailable until a trusted verification process is implemented and reviewed. Safety reports for published events and attendee profiles can be saved to the database, but moderator queues, notifications, and response SLAs are not implemented. Messaging UI, account deletion, password recovery, moderator operations, and comprehensive rate limits remain unfinished.
+**This is still a prototype, not a production-ready service.** If Supabase is configured and has published future events, the website loads those listings; otherwise it uses sample listings. Saved published events are stored per signed-in user; sample-event saves remain temporary preview state. Adult eligibility is fail-closed in the database, with all profiles unverified by default. There is no production adult-verification workflow, so participation and user-to-user social features are intentionally unavailable until a trusted verification process is implemented and reviewed. Safety reports for published events and attendee profiles can be saved to the database, but moderator queues, notifications, and response SLAs are not implemented. Messaging UI, account deletion, moderator operations, and comprehensive rate limits remain unfinished.
 
 ## Run locally
 
@@ -62,8 +63,9 @@ If the website is being hosted instead of run locally, add the same two variable
    - Migration `202610240012_private_rls_helpers.sql` moves RLS-only security-definer helpers into a non-exposed schema and leaves only the intended group-join and event-swipe RPCs callable by signed-in clients.
    - Migration `202610240013_foreign_key_indexes.sql` adds indexes for foreign-key lookups highlighted by Supabase's performance advisor.
    - Migration `202610240014_rls_initplan_optimization.sql` updates remaining ownership/admin policies to evaluate `auth.uid()` once per statement, preserving their existing access rules.
-2. Configure email confirmation, allowed redirect URLs, password policy, Auth abuse protection, backups, and monitoring.
-3. Provision admin access only through trusted server-side tooling. Never expose a Supabase service-role key in a `VITE_*` variable or client bundle.
+2. In **Authentication → URL Configuration**, keep the Site URL set to the actual deployed app URL and add the development and production origins to Redirect URLs. Include `http://localhost:5173/**` for local Vite development and the actual production origin with `/**`; do not allow arbitrary external domains. The recovery flow redirects to the app's `#reset-password` route, so its origin must be allowlisted.
+3. Configure email confirmation, password policy, Auth abuse protection, backups, and monitoring. Confirm the project can deliver recovery emails before relying on password resets.
+4. Provision admin access only through trusted server-side tooling. Never expose a Supabase service-role key in a `VITE_*` variable or client bundle.
 
 The connected Supabase project currently has migrations 001–014 applied. The 13 application tables have RLS enabled and are empty; adult eligibility is false by default, and live attendee discovery, participation, matching, groups, and messaging remain fail-closed until a trusted verification workflow exists. The schema is not a production launch: authentication redirect/email settings, hosting, moderation, and end-to-end tests still need work. The Supabase connector records server-generated migration version IDs that differ from this repository's filename prefixes; reconcile local and remote migration history before using the Supabase CLI to push further migrations, and do not run a blind `db push`.
 
