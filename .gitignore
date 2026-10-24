@@ -1,0 +1,14 @@
+# Local dependencies and generated builds
+node_modules/
+dist/
+coverage/
+
+# Local environment variables and credentials
+.env
+.env.*
+!.env.example
+
+# Editor and operating-system files
+.DS_Store
+.vscode/
+.idea/
