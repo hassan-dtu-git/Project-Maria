@@ -7,13 +7,14 @@ Maria is an event-first social discovery website: discover an event, find people
 The `build/mvp-foundation` branch contains:
 - Responsive React/Vite landing page and event discovery with search/category filters.
 - Event details, responsive navigation, and a Supabase-backed feed for published future events when the project is configured; sample listings remain as a preview fallback.
-- Signed-in users can mark interest in published events; participation writes are protected by RLS policies. The interface explicitly notes that participant discovery and matching are not yet connected.
+- Signed-in account and event-interest UI; the database blocks participation, attendee discovery, groups, messaging, and matching until adult eligibility has been confirmed through a trusted server-side process.
+- Adult verification defaults to false and cannot be set by a normal browser session. A real verification workflow is not implemented; do not manually mark ordinary accounts verified.
 - Safety guidance, community guidelines, and draft Terms and Privacy pages.
 - Sign-up/login UI with optional Supabase Auth integration.
 - Supabase/Postgres schema migrations for profiles, events, participation, swipes, matches, groups, messages, blocks, reports, terms acceptance, RLS, event-scoped swipe/match RPC, and basic swipe rate limiting.
 - CI workflow for a production frontend build.
 
-**This is still a prototype, not a production-ready service.** If Supabase is configured and has published future events, the website loads those listings and persists event interest; otherwise it uses sample listings. Saved events are in-memory only. The website's reporting UI is not connected to the reports table or a moderator queue. Event-scoped participant discovery and swipe actions now call the Supabase policies/RPC when configured, but they have not been tested against a live database. Persistent saved events, group join UI, messaging UI, profile editing, account deletion, password recovery, moderation operations, and comprehensive rate limits are not implemented.
+**This is still a prototype, not a production-ready service.** If Supabase is configured and has published future events, the website loads those listings; otherwise it uses sample listings. Saved events are in-memory only. Adult eligibility is fail-closed in the database, with all profiles unverified by default. There is no production adult-verification workflow, so participation and user-to-user social features are intentionally unavailable until a trusted verification process is implemented and reviewed. The reporting UI is not connected to a moderator queue. Persistent saved events, messaging UI, profile editing, account deletion, password recovery, moderation operations, and comprehensive rate limits remain unfinished.
 
 ## Run locally
 
@@ -51,12 +52,14 @@ If the website is being hosted instead of run locally, add the same two variable
 
 ### Database setup and launch checks
 
-1. Apply migrations in timestamp order from `supabase/migrations/` in a non-production project first. Review and test every RLS policy and RPC before production.
-   The final `202610240008_data_api_table_grants.sql` migration explicitly grants only the browser operations covered by RLS. This is necessary for new Supabase projects where public-schema tables are not automatically exposed through the Data API.
+1. Apply migrations in timestamp order from `supabase/migrations/` in a development project first. Review and test every RLS policy and RPC before production.
+   - Migration `202610240007_participation_policy_hardening.sql` introduces a default-false adult eligibility flag and allows participation only for verified adults attending published upcoming events.
+   - Migration `202610240008_data_api_table_grants.sql` explicitly grants only the browser operations covered by RLS; grants determine whether a role can reach a table, while RLS determines which rows it can access.
+   - Migration `202610240009_adult_verification_gate.sql` limits profile discovery, participant access, group membership, messaging, and match visibility to eligible adult users and preserves block checks.
 2. Configure email confirmation, allowed redirect URLs, password policy, Auth abuse protection, backups, and monitoring.
 3. Provision admin access only through trusted server-side tooling. Never expose a Supabase service-role key in a `VITE_*` variable or client bundle.
 
-The database migrations have been committed to the repository, including a policy hardening migration that restricts participation writes to published upcoming events. They **have not been applied to a Supabase project or tested against a live database**. Do not assume that the backend is live.
+The migrations are versioned in the repository, but their application status is specific to each Supabase project. Confirm the migration history and test RLS, RPC behavior, and the adult-eligibility fail-closed behavior in the target project; a successful migration does not establish that a complete verification process or production safety operations exist.
 
 ## Security and traffic control
 
