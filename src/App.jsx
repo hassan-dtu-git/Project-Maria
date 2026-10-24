@@ -466,15 +466,15 @@ export default function App() {
 
     setAccountDeletionBusy(true);
     try {
-      const { error: reauthError } = await supabase.auth.signInWithPassword({
+      const { data: reauthData, error: reauthError } = await supabase.auth.signInWithPassword({
         email: user.email,
         password: accountDeletionPassword
       });
-      if (reauthError) {
+      if (reauthError || reauthData.user?.id !== user.id) {
         throw new Error('Password verification failed. Check your current password and try again.');
       }
 
-      const { error: deletionError } = await supabase.functions.invoke('delete-account', {
+      const { data: deletionData, error: deletionError } = await supabase.functions.invoke('delete-account', {
         body: { confirmation: accountDeletionConfirmation }
       });
       if (deletionError) {
@@ -489,6 +489,9 @@ export default function App() {
           // Keep the non-sensitive fallback message.
         }
         throw new Error(message);
+      }
+      if (deletionData?.deleted !== true) {
+        throw new Error('Maria did not confirm the account deletion. Please try again or contact support.');
       }
 
       await supabase.auth.signOut({ scope: 'local' });
