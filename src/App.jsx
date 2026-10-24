@@ -28,8 +28,11 @@ export default function App() {
   const [search, setSearch] = useState('');
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [saved, setSaved] = useState([]);
+  const [savedEventsLoaded, setSavedEventsLoaded] = useState(false);
   const [toast, setToast] = useState('');
   const [user, setUser] = useState(null);
+  const [adultVerificationChecked, setAdultVerificationChecked] = useState(false);
+  const [adultVerified, setAdultVerified] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -59,6 +62,57 @@ export default function App() {
     }
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadAdultEligibility() {
+      if (!supabase || !user) {
+        setAdultVerified(false);
+        setAdultVerificationChecked(true);
+        return;
+      }
+      setAdultVerificationChecked(false);
+      setAdultVerified(false);
+      try {
+        const { data, error } = await supabase.from('profiles')
+          .select('is_adult_verified')
+          .eq('id', user.id)
+          .maybeSingle();
+        if (!cancelled) setAdultVerified(!error && data?.is_adult_verified === true);
+      } catch {
+        if (!cancelled) setAdultVerified(false);
+      } finally {
+        if (!cancelled) setAdultVerificationChecked(true);
+      }
+    }
+    loadAdultEligibility();
+    return () => { cancelled = true; };
+  }, [user?.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadSavedEvents() {
+      if (!supabase || !user) {
+        setSaved([]);
+        setSavedEventsLoaded(true);
+        return;
+      }
+      setSavedEventsLoaded(false);
+      const { data, error } = await supabase.from('saved_events')
+        .select('event_id')
+        .eq('user_id', user.id);
+      if (cancelled) return;
+      if (error) {
+        setSaved([]);
+        setToast('Your saved list could not be loaded. Please refresh and try again.');
+      } else {
+        setSaved((data || []).map(row => row.event_id));
+      }
+      setSavedEventsLoaded(true);
+    }
+    loadSavedEvents();
+    return () => { cancelled = true; };
+  }, [user?.id]);
 
   useEffect(() => {
     if (!supabase) return;
@@ -100,17 +154,17 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!supabase || !user) { setJoinedEventIds([]); return; }
+    if (!supabase || !user || !adultVerificationChecked || !adultVerified) { setJoinedEventIds([]); return; }
     let cancelled = false;
     supabase.from('event_participants').select('event_id').eq('user_id', user.id).neq('status', 'cancelled')
       .then(({ data, error }) => {
         if (!cancelled && !error) setJoinedEventIds((data || []).map(row => row.event_id));
       });
     return () => { cancelled = true; };
-  }, [user?.id]);
+  }, [user?.id, adultVerificationChecked, adultVerified]);
 
   useEffect(() => {
-    if (page !== 'people' || !user) return;
+    if (page !== 'people' || !user || !adultVerificationChecked || !adultVerified) return;
     const eligibleEventIds = liveEvents
       .filter(item => joinedEventIds.includes(item.id))
       .map(item => item.id);
@@ -119,7 +173,7 @@ export default function App() {
   }, [page, user?.id, discoveryEventId, joinedEventIds, liveEvents]);
 
   useEffect(() => {
-    if (page !== 'people' || !supabase || !user || !discoveryEventId) {
+    if (page !== 'people' || !supabase || !user || !adultVerificationChecked || !adultVerified || !discoveryEventId) {
       setDiscoveryPeople([]);
       return;
     }
@@ -163,7 +217,7 @@ export default function App() {
     }
     loadPeople();
     return () => { cancelled = true; };
-  }, [page, user?.id, discoveryEventId]);
+  }, [page, user?.id, discoveryEventId, adultVerificationChecked, adultVerified]);
 
   useEffect(() => {
     if (!toast) return;
@@ -179,7 +233,23 @@ export default function App() {
   ), [displayedEvents, category, search]);
 
   function navigate(next) { window.location.hash = next === 'home' ? '' : next; setPage(next); setMobileOpen(false); setSelectedEvent(null); window.scrollTo(0, 0); }
-  function toggleSave(id) { setSaved(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]); setToast(saved.includes(id) ? 'Removed from your list.' : 'Saved to your list.'); }
+  async function toggleSave(id) {
+    const wasSaved = saved.includes(id);
+    const eventItem = displayedEvents.find(item => item.id === id);
+    if (eventItem?.isLive && supabase && user) {
+      const result = wasSaved
+        ? await supabase.from('saved_events').delete().eq('user_id', user.id).eq('event_id', id)
+        : await supabase.from('saved_events').insert({ user_id: user.id, event_id: id });
+      if (result.error) {
+        setToast('Could not update your saved list. Please try again.');
+        return;
+      }
+    }
+    setSaved(previous => wasSaved ? previous.filter(item => item !== id) : [...previous, id]);
+    setToast(eventItem?.isLive && !user
+      ? (wasSaved ? 'Removed from this preview.' : 'Saved in this preview. Log in to sync published events.')
+      : (wasSaved ? 'Removed from your list.' : 'Saved to your list.'));
+  }
   async function joinEvent(eventItem) {
     if (!eventItem?.isLive) {
       setJoinMessage('This is a sample listing. Live participation is available only on published events.');
@@ -189,6 +259,14 @@ export default function App() {
       setSelectedEvent(null);
       navigate('login');
       setToast('Log in to mark interest in an event.');
+      return;
+    }
+    if (!adultVerificationChecked) {
+      setJoinMessage('Checking account eligibility. Please try again shortly.');
+      return;
+    }
+    if (!adultVerified) {
+      setJoinMessage('Event participation is unavailable until a trusted adult-eligibility verification workflow is live. No self-declared age or profile setting can enable access.');
       return;
     }
     if (!supabase || joinBusy) return;
@@ -210,6 +288,10 @@ export default function App() {
   }
   async function handleSwipe(person, action) {
     if (!user) { navigate('login'); return; }
+    if (!adultVerificationChecked || !adultVerified) {
+      setSwipeNotice('Attendee discovery is paused until a trusted adult-eligibility verification workflow is live.');
+      return;
+    }
     if (!supabase || !discoveryEventId || swipeBusy) return;
     setSwipeBusy(true);
     setSwipeNotice('');
@@ -274,9 +356,9 @@ export default function App() {
       {page === 'home' && <><section className="hero">
         <div className="hero-copy"><div className="eyebrow"><span className="eyebrow-dot"/> YOUR PLANS, YOUR PEOPLE</div><h1>Good things<br/>are better <em>together.</em></h1><p className="hero-text">Find your people for the things you want to do. Discover events, meet people who are going too, and make a plan together.</p><div className="hero-actions"><button className="button" onClick={() => navigate('events')}>Find your next plan <ArrowRight size={17}/></button><button className="text-button" onClick={() => navigate('how-it-works')}>How Maria works <span>↗</span></button></div><div className="hero-note"><span className="avatar-stack"><i>A</i><i>R</i><i>M</i><i>+</i></span><span>Less scrolling. More doing.</span></div></div>
         <div className="hero-art"><div className="art-orbit orbit-one"/><div className="art-orbit orbit-two"/><div className="photo-card card-back"><div className="photo-sun"/><div className="photo-hills"/><span>FIND YOUR SCENE</span></div><div className="photo-card card-front"><div className="concert-lights"><i/><i/><i/><i/></div><div className="concert-crowd"><i/><i/><i/><i/><i/><i/></div><div className="photo-caption"><span>FRIDAY NIGHT</span><strong>Live music, new friends.</strong></div></div><div className="floating-tag tag-top"><span className="tag-icon"><Users size={16}/></span><span><strong>Your kind of people</strong><small>Going to the same event</small></span></div><div className="floating-tag tag-bottom"><span className="match-heart"><Heart size={16} fill="currentColor"/></span><span><strong>It's a mutual!</strong><small>Your plan starts here</small></span></div><div className="sparkle sparkle-one">✳</div><div className="sparkle sparkle-two">✦</div></div>
-      </section><section className="trust-strip"><div><ShieldCheck size={18}/><span>Safety comes first</span></div><span className="strip-divider"/><div><Users size={18}/><span>Friendship-first by design</span></div><span className="strip-divider"/><div><MapPin size={18}/><span>Plans that happen in real life</span></div></section><section className="section featured"><div className="section-heading"><div><div className="eyebrow">MAKE A PLAN</div><h2>Something good is happening.</h2><p>Find an event. Find your people. Go together.</p></div><button className="text-button" onClick={() => navigate('events')}>Explore all events <ArrowRight size={16}/></button></div><EventGrid items={displayedEvents.slice(0,3)} onSelect={setSelectedEvent} saved={saved} onSave={toggleSave}/></section><section className="how-band"><div className="eyebrow">NO AWKWARD GUESSWORK</div><h2>From “I want to go”<br/>to “see you there.”</h2><div className="steps"><Step number="01" title="Find your thing" text="Explore local events that you'd genuinely enjoy."/><Step number="02" title="Meet your people" text="See who's interested and connect around a shared plan."/><Step number="03" title="Make it happen" text="Chat, coordinate, and head out with your new crew."/></div><button className="button button-light" onClick={() => navigate('events')}>Explore events <ArrowRight size={16}/></button></section></>}
+      </section><section className="trust-strip"><div><ShieldCheck size={18}/><span>Adults-only social features</span></div><span className="strip-divider"/><div><Users size={18}/><span>Friendship-first by design</span></div><span className="strip-divider"/><div><MapPin size={18}/><span>Plans that happen in real life</span></div></section><section className="section featured"><div className="section-heading"><div><div className="eyebrow">MAKE A PLAN</div><h2>Something good is happening.</h2><p>Find an event. Find your people. Go together.</p></div><button className="text-button" onClick={() => navigate('events')}>Explore all events <ArrowRight size={16}/></button></div><EventGrid items={displayedEvents.slice(0,3)} onSelect={setSelectedEvent} saved={saved} onSave={toggleSave}/></section><section className="how-band"><div className="eyebrow">NO AWKWARD GUESSWORK</div><h2>From “I want to go”<br/>to “see you there.”</h2><div className="steps"><Step number="01" title="Find your thing" text="Explore local events that you'd genuinely enjoy."/><Step number="02" title="Meet your people" text="See who's interested and connect around a shared plan."/><Step number="03" title="Make it happen" text="Chat, coordinate, and head out with your new crew."/></div><button className="button button-light" onClick={() => navigate('events')}>Explore events <ArrowRight size={16}/></button></section></>}
 
-      {page === 'events' && <section className="page-section"><div className="eyebrow">YOUR CITY, YOUR SCENE</div><h1 className="page-title">Find something<br/><em>worth going to.</em></h1><p className="page-intro">Discover plans and meet people who want to be there too.</p><div className="event-tools"><label className="search-box"><Compass size={18}/><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search events or places" aria-label="Search events or places"/><span>⌘ K</span></label><div className="filter-row">{categories.map(item => <button key={item} className={category === item ? 'filter-chip selected' : 'filter-chip'} onClick={() => setCategory(item)}>{item}</button>)}</div></div>{filteredEvents.length ? <EventGrid items={filteredEvents} onSelect={setSelectedEvent} saved={saved} onSave={toggleSave}/> : <div className="empty-state"><Compass size={28}/><h3>No events found</h3><p>Try a different search or category.</p><button className="text-button" onClick={() => {setSearch('');setCategory('All events');}}>Clear filters</button></div>}{eventsLoadError && <p className="demo-notice" role="status">{eventsLoadError}</p>}<p className="demo-notice">{liveEvents.length ? 'Showing published event listings. Confirm details with the organizer before making plans.' : 'Preview events are sample content for the prototype, not verified live listings.'}</p></section>}
+      {page === 'events' && <section className="page-section"><div className="eyebrow">YOUR CITY, YOUR SCENE</div><h1 className="page-title">Find something<br/><em>worth going to.</em></h1><p className="page-intro">Discover and save real events. Attendee participation is reserved for adults after trusted eligibility verification is available.</p><div className="event-tools"><label className="search-box"><Compass size={18}/><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search events or places" aria-label="Search events or places"/><span>⌘ K</span></label><div className="filter-row">{categories.map(item => <button key={item} className={category === item ? 'filter-chip selected' : 'filter-chip'} onClick={() => setCategory(item)}>{item}</button>)}</div></div>{filteredEvents.length ? <EventGrid items={filteredEvents} onSelect={setSelectedEvent} saved={saved} onSave={toggleSave}/> : <div className="empty-state"><Compass size={28}/><h3>No events found</h3><p>Try a different search or category.</p><button className="text-button" onClick={() => {setSearch('');setCategory('All events');}}>Clear filters</button></div>}{eventsLoadError && <p className="demo-notice" role="status">{eventsLoadError}</p>}<p className="demo-notice">{liveEvents.length ? 'Showing published event listings. Confirm details with the organizer before making plans.' : 'Preview events are sample content for the prototype, not verified live listings.'}</p></section>}
 
       {page === 'how-it-works' && <section className="page-section narrow"><div className="eyebrow">SIMPLE BY DESIGN</div><h1 className="page-title">A plan is better<br/><em>with your people.</em></h1><p className="page-intro">Maria connects people through a shared interest in doing something offline—not endless swiping.</p><div className="feature-list"><Step number="01" title="Pick an event" text="Browse activities, culture, music, food, and local experiences. Choose something you actually want to do."/><Step number="02" title="Find people going too" text="Discover other interested attendees. Matching is tied to the event so the reason to connect is clear."/><Step number="03" title="Connect by choice" text="Send interest and connect when it is mutual. You control what you share and who can contact you."/><Step number="04" title="Coordinate safely" text="Use the conversation to agree on a public meeting point and practical details. You can block or report concerning behaviour."/></div><button className="button" onClick={() => navigate('events')}>Explore events <ArrowRight size={16}/></button></section>}
 
@@ -284,14 +366,16 @@ export default function App() {
       {page === 'terms' && <PolicyPage eyebrow="LEGAL · DRAFT FOR REVIEW" title={<>Terms of<br/><em>Service.</em></>} intro="Last updated: 24 October 2026. This draft is a starting point, not legal advice or a final contract." sections={[['1. Service description','Maria is intended to help people discover events and connect with others interested in attending. Features, listings, and availability may change. The current website is a prototype and may display sample event data.'],['2. Eligibility and accounts','You must meet the minimum age and legal eligibility requirements applicable to the service in your location. Provide accurate account information, protect your credentials, and notify the service if you suspect unauthorized access. Age and identity verification are not implemented in this prototype.'],['3. Conduct','Do not harass, threaten, impersonate, defraud, stalk, or discriminate against other users. Do not publish unlawful content or misuse the service. We may restrict access when a lawful and appropriately implemented moderation process supports that action.'],['4. Events and third parties','Event details, ticket availability, venue rules, and external booking links must be checked with the organizer. Unless explicitly stated, Maria does not organize, operate, or guarantee third-party events.'],['5. Safety and disclaimers','Online profiles and interactions cannot guarantee another person’s identity or conduct. Use reasonable precautions when meeting people. The service is provided subject to applicable law; any limitations of liability must be reviewed by qualified counsel.'],['6. Changes and contact','Terms may be updated with appropriate notice where required by law. Add a monitored support contact and the operator’s legal identity before public launch.']]}/>}
       {page === 'privacy' && <PolicyPage eyebrow="LEGAL · DRAFT FOR REVIEW" title={<>Your privacy,<br/><em>your choice.</em></>} intro="This draft explains the intended approach. The actual data practices must be updated to match the production implementation." sections={[['Information collected','A production service may process account identifiers, profile information, event interests, matches, messages, safety reports, and basic security logs. Collect only what is needed for stated purposes.'],['How information is used','Data should be used to operate accounts, display events, enable user-requested connections, prevent abuse, and meet legal obligations. Do not claim that this prototype has production storage or retention controls.'],['Sharing and visibility','Do not expose private email addresses, precise location, messages, or safety reports publicly. Restrict internal access by role and document any service providers that process data.'],['Retention and deletion','Set and disclose retention periods for accounts, messages, security logs, and reports. Provide a usable account deletion and data-request process before launch.'],['Security and children','Use secure authentication, server-side authorization, least-privilege access, and protected secrets. Establish an age policy and safeguards appropriate to the intended audience and applicable law.'],['Operator and contact','Before launch, identify the legal operator, applicable jurisdiction, privacy contact, data processors, and a process for privacy requests. Obtain jurisdiction-specific legal review.']]}/>}
       {page === 'guidelines' && <PolicyPage eyebrow="COMMUNITY GUIDELINES" title={<>Make room<br/><em>for everyone.</em></>} intro="The community should make it easier to enjoy shared interests—not harder to feel safe." sections={[['Be respectful','Respect people’s boundaries, identity, time, and decision to decline a match or invitation.'],['Keep it genuine','Do not impersonate others, misrepresent event plans, spam users, or use the service to scam people.'],['No harassment','Threats, unwanted sexual attention, stalking, discriminatory abuse, and intimidation are not acceptable.'],['Protect privacy','Do not publish another person’s private details, screenshots, or location without permission.'],['Report concerns','Provide a clear reporting channel and a trained moderation process. In this prototype, reporting is only a UI demonstration and is not delivered to a moderation team.']]}/>}
-      {(page === 'login' || page === 'signup') && <section className="auth-layout"><div className="auth-side"><div className="eyebrow">YOUR NEXT CHAPTER STARTS HERE</div><h1>{page === 'signup' ? <>Meet your people.<br/><em>Make a memory.</em></> : <>Good to see<br/><em>you again.</em></>}</h1><p>Shared plans are a good place to start.</p><div className="auth-decoration"><Users size={26}/><span>Real interests. Real plans.</span></div></div><div className="auth-card"><div className="eyebrow">{page === 'signup' ? 'CREATE YOUR ACCOUNT' : 'WELCOME BACK'}</div><h2>{page === 'signup' ? 'Join Maria' : 'Log in'}</h2><p className="muted">{page === 'signup' ? 'Start finding people for the things you love.' : 'Pick up where your plans left off.'}</p><form onSubmit={handleAuth}>{page === 'signup' && <label className="field-label">Your name<input value={fullName} onChange={e => setFullName(e.target.value)} autoComplete="name" placeholder="How should we call you?" required maxLength={80}/></label>}<label className="field-label">Email address<input type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" placeholder="you@example.com" required maxLength={254}/></label><label className="field-label">Password<input type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete={page === 'signup' ? 'new-password' : 'current-password'} placeholder="At least 8 characters" required minLength={8} maxLength={128}/></label>{page === 'signup' && <p className="consent-note">By creating an account, you agree to the <a href="#terms">Terms of Service</a> and acknowledge the <a href="#privacy">Privacy Policy</a>.</p>}{authMessage && <p className="form-message" role="alert">{authMessage}</p>}<button className="button auth-submit" disabled={authBusy}>{authBusy ? 'Please wait…' : page === 'signup' ? 'Create account' : 'Log in'} <ArrowRight size={16}/></button></form><p className="auth-switch">{page === 'signup' ? 'Already have an account?' : 'New to Maria?'} <a href={page === 'signup' ? '#login' : '#signup'}>{page === 'signup' ? 'Log in' : 'Create an account'}</a></p>{!supabase && <p className="demo-notice">Preview mode: real authentication requires Supabase environment configuration.</p>}</div></section>}
+      {(page === 'login' || page === 'signup') && <section className="auth-layout"><div className="auth-side"><div className="eyebrow">YOUR NEXT CHAPTER STARTS HERE</div><h1>{page === 'signup' ? <>Meet your people.<br/><em>Make a memory.</em></> : <>Good to see<br/><em>you again.</em></>}</h1><p>Shared plans are a good place to start.</p><div className="auth-decoration"><Users size={26}/><span>Real interests. Real plans.</span></div></div><div className="auth-card"><div className="eyebrow">{page === 'signup' ? 'CREATE YOUR ACCOUNT' : 'WELCOME BACK'}</div><h2>{page === 'signup' ? 'Join Maria' : 'Log in'}</h2><p className="muted">{page === 'signup' ? 'Explore events now; social participation is reserved for adults whose eligibility can be verified.' : 'Pick up where your plans left off.'}</p><form onSubmit={handleAuth}>{page === 'signup' && <label className="field-label">Your name<input value={fullName} onChange={e => setFullName(e.target.value)} autoComplete="name" placeholder="How should we call you?" required maxLength={80}/></label>}<label className="field-label">Email address<input type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" placeholder="you@example.com" required maxLength={254}/></label><label className="field-label">Password<input type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete={page === 'signup' ? 'new-password' : 'current-password'} placeholder="At least 8 characters" required minLength={8} maxLength={128}/></label>{page === 'signup' && <><p className="consent-note">Maria is intended for adults aged 18 and over. A trusted adult-eligibility verification workflow is not available in this preview, so event participation, attendee discovery, matching, groups, and messaging remain disabled until that workflow is implemented and reviewed.</p><p className="consent-note">By creating an account, you agree to the <a href="#terms">Terms of Service</a> and acknowledge the <a href="#privacy">Privacy Policy</a>.</p></>}{authMessage && <p className="form-message" role="alert">{authMessage}</p>}<button className="button auth-submit" disabled={authBusy}>{authBusy ? 'Please wait…' : page === 'signup' ? 'Create account' : 'Log in'} <ArrowRight size={16}/></button></form><p className="auth-switch">{page === 'signup' ? 'Already have an account?' : 'New to Maria?'} <a href={page === 'signup' ? '#login' : '#signup'}>{page === 'signup' ? 'Log in' : 'Create an account'}</a></p>{!supabase && <p className="demo-notice">Preview mode: real authentication requires Supabase environment configuration.</p>}</div></section>}
 
-      {page === 'matches' && <section className="page-section narrow"><div className="eyebrow">YOUR MARIA LIST</div><h1 className="page-title">Plans you’ve<br/><em>kept close.</em></h1><p className="page-intro">Saved events live here on this preview. Sign-in, cross-device syncing, and real matches need the connected backend.</p>{saved.length ? <EventGrid items={displayedEvents.filter(e => saved.includes(e.id))} onSelect={setSelectedEvent} saved={saved} onSave={toggleSave}/> : <div className="empty-state"><Heart size={27}/><h3>Your list is waiting</h3><p>Save an event to keep it here.</p><button className="button" onClick={() => navigate('events')}>Explore events <ArrowRight size={16}/></button></div>}</section>}
+      {page === 'matches' && <section className="page-section narrow"><div className="eyebrow">YOUR MARIA LIST</div><h1 className="page-title">Plans you’ve<br/><em>kept close.</em></h1><p className="page-intro">Your saved events appear here. Published event saves sync to your signed-in account; sample preview saves are temporary. A real match inbox is not connected yet.</p>{user && supabase && !savedEventsLoaded ? <div className="empty-state"><p>Loading your saved events…</p></div> : saved.length ? <EventGrid items={displayedEvents.filter(e => saved.includes(e.id))} onSelect={setSelectedEvent} saved={saved} onSave={toggleSave}/> : <div className="empty-state"><Heart size={27}/><h3>Your list is waiting</h3><p>Save an event to keep it here. Published events can sync across sessions when you are logged in.</p><button className="button" onClick={() => navigate('events')}>Explore events <ArrowRight size={16}/></button></div>}</section>}
       {page === 'people' && <section className="page-section narrow">
         <div className="eyebrow">SHARED PLANS, SHARED INTERESTS</div>
         <h1 className="page-title">Meet people<br/><em>going too.</em></h1>
         <p className="page-intro">Discovery is limited to people who share an event with you. You choose whether to like or pass; a match is created only when interest is mutual.</p>
         {!user ? <div className="empty-state"><Users size={27}/><h3>Log in to meet people</h3><button className="button" onClick={() => navigate('login')}>Log in <ArrowRight size={16}/></button></div>
+          : !adultVerificationChecked ? <div className="empty-state"><ShieldCheck size={27}/><h3>Checking account eligibility…</h3><p>Attendee discovery stays locked while the account status is checked.</p></div>
+          : !adultVerified ? <div className="empty-state"><ShieldCheck size={27}/><h3>Attendee discovery is not enabled</h3><p>Maria is reserved for adults aged 18 and over. The trusted verification workflow is not live yet, so this feature remains disabled. Changing a profile setting cannot enable it.</p><button className="button button-outline" onClick={() => navigate('safety')}>Review safety guidance</button></div>
           : !joinedLiveEvents.length ? <div className="empty-state"><CalendarDays size={27}/><h3>Join a current event first</h3><p>People discovery only works for published upcoming events loaded from Supabase. Mark interest in a live event, and it will appear here.</p><button className="button" onClick={() => navigate('events')}>Explore events <ArrowRight size={16}/></button></div>
           : <><label className="field-label">Choose an event<select value={discoveryEventId} onChange={e => setDiscoveryEventId(e.target.value)}>{joinedLiveEvents.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>
             {peopleBusy ? <div className="empty-state"><p>Loading participants…</p></div>
@@ -307,7 +391,7 @@ export default function App() {
 
     <footer className="site-footer"><div className="footer-top"><a className="brand footer-brand" href="#" onClick={e => {e.preventDefault();navigate('home')}}><span className="brand-mark">m.</span><span>maria</span></a><p>Make plans. Find your people.<br/>Go together.</p><button className="button button-light" onClick={() => navigate('events')}>Find a plan <ArrowRight size={15}/></button></div><div className="footer-bottom"><span>© 2026 Maria. Built around doing things together.</span><div><a href="#safety">Safety</a><a href="#guidelines">Guidelines</a><a href="#terms">Terms</a><a href="#privacy">Privacy</a></div><span className="preview-label">EARLY PREVIEW</span></div></footer>
 
-    {selectedEvent && <div className="modal-backdrop" role="presentation" onMouseDown={e => {if(e.target === e.currentTarget) setSelectedEvent(null)}}><section className="event-modal" role="dialog" aria-modal="true" aria-labelledby="event-modal-title"><button className="modal-close" onClick={() => setSelectedEvent(null)} aria-label="Close event details"><X size={20}/></button><div className={'event-art modal-art ' + selectedEvent.color}><selectedEvent.icon size={42}/><span>{selectedEvent.category}</span></div><div className="modal-content"><div className="eyebrow">EVENT DETAILS</div><h2 id="event-modal-title">{selectedEvent.title}</h2><p>{selectedEvent.description}</p><div className="modal-meta"><span><CalendarDays size={17}/>{selectedEvent.date}</span><span><MapPin size={17}/>{selectedEvent.place}</span><span><Users size={17}/>{selectedEvent.people} interested</span></div><div className="modal-price">{selectedEvent.price}</div><div className="modal-actions"><button className="button" onClick={() => {toggleSave(selectedEvent.id);}}>{saved.includes(selectedEvent.id) ? <span><Check size={16}/> Saved</span> : <span><Heart size={16}/> Save this event</span>}</button>{selectedEvent.isLive ? <button className="button button-outline" disabled={joinBusy || joinedEventIds.includes(selectedEvent.id)} onClick={() => joinEvent(selectedEvent)}>{joinedEventIds.includes(selectedEvent.id) ? <span><Check size={16}/> Interested</span> : joinBusy ? 'Saving…' : <span>Mark interest <ArrowRight size={16}/></span>}</button> : <button className="button button-outline" onClick={() => {setSelectedEvent(null);navigate(user ? 'people' : 'signup')}}>Find people <ArrowRight size={16}/></button>}</div>{joinMessage && <p className="form-message" role="status">{joinMessage}</p>}{selectedEvent.bookingUrl && <p><a href={selectedEvent.bookingUrl} target="_blank" rel="noreferrer">Visit event details ↗</a></p>}<p className="demo-notice">{selectedEvent.isLive ? 'Published listing. Check the organizer’s details before attending.' : 'Sample listing only. Confirm event details with the organizer before making plans.'}</p></div></section></div>}
+    {selectedEvent && <div className="modal-backdrop" role="presentation" onMouseDown={e => {if(e.target === e.currentTarget) setSelectedEvent(null)}}><section className="event-modal" role="dialog" aria-modal="true" aria-labelledby="event-modal-title"><button className="modal-close" onClick={() => setSelectedEvent(null)} aria-label="Close event details"><X size={20}/></button><div className={'event-art modal-art ' + selectedEvent.color}><selectedEvent.icon size={42}/><span>{selectedEvent.category}</span></div><div className="modal-content"><div className="eyebrow">EVENT DETAILS</div><h2 id="event-modal-title">{selectedEvent.title}</h2><p>{selectedEvent.description}</p><div className="modal-meta"><span><CalendarDays size={17}/>{selectedEvent.date}</span><span><MapPin size={17}/>{selectedEvent.place}</span><span><Users size={17}/>{selectedEvent.people} interested</span></div><div className="modal-price">{selectedEvent.price}</div><div className="modal-actions"><button className="button" onClick={() => {toggleSave(selectedEvent.id);}}>{saved.includes(selectedEvent.id) ? <span><Check size={16}/> Saved</span> : <span><Heart size={16}/> Save this event</span>}</button>{selectedEvent.isLive ? <button className="button button-outline" disabled={joinBusy || joinedEventIds.includes(selectedEvent.id) || (!!user && (!adultVerificationChecked || !adultVerified))} onClick={() => joinEvent(selectedEvent)}>{joinedEventIds.includes(selectedEvent.id) ? <span><Check size={16}/> Interested</span> : joinBusy ? 'Saving…' : !user ? <span>Log in to mark interest <ArrowRight size={16}/></span> : !adultVerificationChecked ? 'Checking eligibility…' : !adultVerified ? 'Participation unavailable' : <span>Mark interest <ArrowRight size={16}/></span>}</button> : <button className="button button-outline" onClick={() => {setSelectedEvent(null);navigate(user ? 'people' : 'signup')}}>Find people <ArrowRight size={16}/></button>}</div>{joinMessage && <p className="form-message" role="status">{joinMessage}</p>}{selectedEvent.bookingUrl && <p><a href={selectedEvent.bookingUrl} target="_blank" rel="noreferrer">Visit event details ↗</a></p>}<p className="demo-notice">{selectedEvent.isLive ? 'Published listing. Check the organizer’s details before attending.' : 'Sample listing only. Confirm event details with the organizer before making plans.'}</p></div></section></div>}
     {reporting && <div className="modal-backdrop"><section className="small-modal" role="dialog" aria-modal="true" aria-labelledby="report-title"><button className="modal-close" onClick={() => {setReporting(null);setReportSubmitted(false)}} aria-label="Close report"><X size={20}/></button><h2 id="report-title">Report a concern</h2>{reportSubmitted ? <><p>Your report preview was recorded only in this page state. No moderation team has been notified.</p><button className="button" onClick={() => {setReporting(null);setReportSubmitted(false)}}>Close</button></> : <><p>Choose the closest reason. Please do not include unnecessary sensitive details.</p><label className="field-label">Reason<select value={reportReason} onChange={e => setReportReason(e.target.value)}><option>Inappropriate behaviour</option><option>Harassment or threats</option><option>Fake profile or scam</option><option>Privacy concern</option><option>Other safety concern</option></select></label><button className="button" onClick={reportUser}>Submit report</button></>}</section></div>}
     {toast && <div className="toast" role="status">{toast}</div>}
     <button className="report-shortcut" onClick={() => {setReporting('community');setReportSubmitted(false)}} title="Report a safety concern"><ShieldCheck size={17}/><span>Safety</span></button>
