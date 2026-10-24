@@ -54,10 +54,9 @@ Deno.serve(async (req: Request) => {
     const payload = await providerResponse.json();
     const providerEvents = Array.isArray(payload?._embedded?.events) ? payload._embedded.events : [];
     const rows = providerEvents.flatMap((event: any) => {
-      const startRaw = event?.dates?.start?.dateTime
-        ?? (event?.dates?.start?.localDate && event?.dates?.start?.localTime
-          ? `${event.dates.start.localDate}T${event.dates.start.localTime}`
-          : null);
+      // Only ingest absolute timestamps. Local date/time without an explicit
+      // timezone is ambiguous and must not be silently interpreted as UTC.
+      const startRaw = event?.dates?.start?.dateTime;
       if (!event?.id || !event?.name || !startRaw) return [];
       const startsAt = new Date(startRaw);
       if (!Number.isFinite(startsAt.getTime()) || startsAt <= new Date()) return [];
