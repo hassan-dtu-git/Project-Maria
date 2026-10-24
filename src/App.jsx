@@ -87,6 +87,9 @@ export default function App() {
   const [safetyReports, setSafetyReports] = useState([]);
   const [reportModerationMessage, setReportModerationMessage] = useState('');
   const [reportModerationBusyId, setReportModerationBusyId] = useState('');
+  const [eventSyncBusy, setEventSyncBusy] = useState(false);
+  const [eventSyncMessage, setEventSyncMessage] = useState('');
+  const [feedRefreshCounter, setFeedRefreshCounter] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -320,7 +323,7 @@ export default function App() {
       window.clearInterval(refreshInterval);
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [feedRefreshCounter]);
 
   useEffect(() => {
     if (!supabase || !user || !adultVerificationChecked || !adultVerified) { setJoinedEventIds([]); return; }
@@ -490,6 +493,35 @@ export default function App() {
     finally { setSubmissionBusy(false); }
   }
 
+
+  async function syncExternalEvents() {
+    if (!supabase || !user || !isAdmin || eventSyncBusy) return;
+    setEventSyncBusy(true);
+    setEventSyncMessage('');
+    try {
+      const { data, error } = await supabase.functions.invoke('sync-events-ticketmaster', { body: {} });
+      if (error) {
+        let message = error.message || 'Could not sync external events.';
+        try {
+          const response = error.context;
+          if (response && typeof response.clone === 'function') {
+            const payload = await response.clone().json();
+            if (typeof payload?.error === 'string') message = payload.error;
+          }
+        } catch {
+          // Keep the safe fallback message.
+        }
+        throw new Error(message);
+      }
+      if (data?.error) throw new Error(data.error);
+      setEventSyncMessage(`Sync finished: ${data?.upserted ?? 0} events added or refreshed.`);
+      setFeedRefreshCounter(value => value + 1);
+    } catch (error) {
+      setEventSyncMessage(error.message || 'Could not sync external events. Check provider configuration.');
+    } finally {
+      setEventSyncBusy(false);
+    }
+  }
 
   async function updateSafetyReport(report, status) {
     if (!supabase || !user || !isAdmin || reportModerationBusyId) return;
@@ -825,6 +857,9 @@ export default function App() {
             <div className="eyebrow">{item.category} · Submitted {new Date(item.created_at).toLocaleDateString()}</div><h2>{item.title}</h2><p>{item.description}</p><p className="muted">{item.venue_name}, {item.city} · {new Date(item.starts_at).toLocaleString()}</p>{item.ends_at && <p className="muted">Ends {new Date(item.ends_at).toLocaleString()}</p>}{item.booking_url && <p><a href={item.booking_url} target="_blank" rel="noreferrer">Open event source ↗</a></p>}
             <div className="moderation-actions"><button className="button" disabled={!!moderationBusyId} onClick={()=>reviewSubmission(item,'approved')}>Approve</button><button className="button button-outline" disabled={!!moderationBusyId} onClick={()=>reviewSubmission(item,'rejected')}>Reject</button></div>
           </article>)}</div> : <div className="empty-state"><Check size={27}/><h3>Queue is clear</h3><p>No pending event submissions.</p></div>}
+          <div className="section-heading" style={{marginTop:'3rem'}}><div><div className="eyebrow">EXTERNAL EVENT DATA</div><h2>Sync event listings</h2><p>Fetch future Delhi listings from the configured provider. Imported listings are publicly visible; review provider details before enabling sync.</p></div></div>
+          {eventSyncMessage && <p className="form-message" role="status">{eventSyncMessage}</p>}
+          <button className="button" disabled={eventSyncBusy} onClick={syncExternalEvents}>{eventSyncBusy ? 'Syncing events…' : 'Sync Ticketmaster events'} <ArrowRight size={16}/></button>
           <div className="section-heading" style={{marginTop:'3rem'}}><div><div className="eyebrow">SAFETY</div><h2>Safety reports</h2><p>Reports are visible to authorized administrators only. Handle details confidentially.</p></div></div>
           {reportModerationMessage && <p className="form-message" role="status">{reportModerationMessage}</p>}
           {safetyReports.length ? <div className="submission-list">{safetyReports.map(report=><article className="moderation-card" key={report.id}>
