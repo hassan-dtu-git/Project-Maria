@@ -16,10 +16,12 @@ const events = [
   { id: 6, title: 'Coffee & Conversation', category: 'Social', date: 'Sat, 7 Nov · 10:30 AM', startsAt: '2026-11-07T10:30:00+05:30', place: 'Neighbourhood Cafe, Delhi', people: 11, price: 'Pay for your order', color: 'butter', icon: MessageCircle, description: 'A small-group coffee hangout designed to make meeting people easier.' }
 ];
 const categories = ['All events', 'Music', 'Art', 'Social', 'Outdoors', 'Culture'];
+const interestOptions = ['Live music', 'Art & making', 'Comedy', 'Food & coffee', 'Board games', 'Films & culture', 'Walking & outdoors', 'Fitness & sports', 'Technology', 'Books & learning', 'Photography', 'Volunteering'];
+const timeOptions = ['Weekday mornings', 'Weekday evenings', 'Weekend mornings', 'Weekend evenings'];
 
 function getInitialPage() {
   const hash = window.location.hash.replace('#', '');
-  return ['events', 'how-it-works', 'safety', 'terms', 'privacy', 'guidelines', 'login', 'signup', 'forgot-password', 'reset-password', 'matches', 'people', 'profile'].includes(hash) ? hash : 'home';
+  return ['events', 'how-it-works', 'safety', 'terms', 'privacy', 'guidelines', 'login', 'signup', 'forgot-password', 'reset-password', 'matches', 'people', 'profile', 'quiz', 'submit-event'].includes(hash) ? hash : 'home';
 }
 
 export default function App() {
@@ -67,6 +69,17 @@ export default function App() {
   const [peopleBusy, setPeopleBusy] = useState(false);
   const [swipeBusy, setSwipeBusy] = useState(false);
   const [swipeNotice, setSwipeNotice] = useState('');
+  const [quizInterests, setQuizInterests] = useState([]);
+  const [quizSocialStyle, setQuizSocialStyle] = useState('small_groups');
+  const [quizGroupSize, setQuizGroupSize] = useState('small');
+  const [quizTimes, setQuizTimes] = useState([]);
+  const [quizLoading, setQuizLoading] = useState(false);
+  const [quizSaving, setQuizSaving] = useState(false);
+  const [quizMessage, setQuizMessage] = useState('');
+  const [submissionForm, setSubmissionForm] = useState({title:'',description:'',category:'Music',venue_name:'',city:'Delhi NCR',starts_at:'',ends_at:'',booking_url:''});
+  const [submissionBusy, setSubmissionBusy] = useState(false);
+  const [submissionMessage, setSubmissionMessage] = useState('');
+  const [mySubmissions, setMySubmissions] = useState([]);
 
   useEffect(() => {
     const onHash = () => { setPage(getInitialPage()); setMobileOpen(false); window.scrollTo(0, 0); };
@@ -344,6 +357,40 @@ export default function App() {
       setJoinBusy(false);
     }
   }
+
+  async function saveMatchPreferences(event) {
+    event.preventDefault(); setQuizMessage('');
+    if (!user || !supabase) { setQuizMessage('Log in to save your preferences to your account.'); return; }
+    if (quizInterests.length < 2) { setQuizMessage('Choose at least two interests.'); return; }
+    setQuizSaving(true);
+    try {
+      const { error } = await supabase.from('user_match_preferences').upsert({user_id:user.id,interests:quizInterests,social_style:quizSocialStyle,group_size:quizGroupSize,preferred_times:quizTimes},{onConflict:'user_id'});
+      if (error) throw error;
+      setQuizMessage('Preferences saved. These currently personalize event suggestions; person-to-person ranking is not enabled.');
+    } catch (error) { setQuizMessage(error.message || 'Could not save preferences.'); }
+    finally { setQuizSaving(false); }
+  }
+
+  async function submitEvent(event) {
+    event.preventDefault(); setSubmissionMessage('');
+    if (!user || !supabase) { setSubmissionMessage('Log in to submit an event.'); return; }
+    const start = new Date(submissionForm.starts_at);
+    const end = submissionForm.ends_at ? new Date(submissionForm.ends_at) : null;
+    if (Number.isNaN(start.getTime()) || start <= new Date()) { setSubmissionMessage('Choose a valid future start date and time.'); return; }
+    if (end && (Number.isNaN(end.getTime()) || end <= start)) { setSubmissionMessage('End time must be later than the start time.'); return; }
+    if (submissionForm.booking_url && !submissionForm.booking_url.toLowerCase().startsWith('https://')) { setSubmissionMessage('Booking links must start with https://'); return; }
+    setSubmissionBusy(true);
+    try {
+      const payload = {submitted_by:user.id,title:submissionForm.title.trim(),description:submissionForm.description.trim(),category:submissionForm.category,venue_name:submissionForm.venue_name.trim(),city:submissionForm.city.trim(),starts_at:start.toISOString(),ends_at:end ? end.toISOString() : null,booking_url:submissionForm.booking_url.trim() || null};
+      const {data,error}=await supabase.from('event_submissions').insert(payload).select('id,title,city,starts_at,status,created_at').single();
+      if(error) throw error;
+      setMySubmissions(previous=>[data,...previous].slice(0,20));
+      setSubmissionForm({title:'',description:'',category:'Music',venue_name:'',city:'Delhi NCR',starts_at:'',ends_at:'',booking_url:''});
+      setSubmissionMessage('Submitted for review. Your event will not appear publicly until an authorized moderator approves it.');
+    } catch(error) { setSubmissionMessage(error.message || 'Could not submit this event. Please try again.'); }
+    finally { setSubmissionBusy(false); }
+  }
+
   async function handleSwipe(person, action) {
     if (!user) { navigate('login'); return; }
     if (!adultVerificationChecked || !adultVerified) {
@@ -616,6 +663,7 @@ export default function App() {
         <a href="#events" className={page === 'events' ? 'active' : ''}>Explore events</a>
         <a href="#people" className={page === 'people' ? 'active' : ''}>Meet people</a>
         <a href="#quiz" className={page === 'quiz' ? 'active' : ''}>Match quiz</a>
+        <a href="#submit-event" className={page === 'submit-event' ? 'active' : ''}>Submit an event</a>
         <a href="#how-it-works" className={page === 'how-it-works' ? 'active' : ''}>How it works</a>
         <a href="#safety" className={page === 'safety' ? 'active' : ''}>Safety</a>
         {user ? <><a href="#matches">My list <span className="count">{saved.length}</span></a><button className="nav-login" onClick={signOut}>Sign out</button></> : <><a href="#login" className="nav-login">Log in</a><a href="#signup" className="button button-small">Get started <ArrowRight size={15}/></a></>}
@@ -627,6 +675,25 @@ export default function App() {
         <div className="hero-copy"><div className="eyebrow"><span className="eyebrow-dot"/> YOUR PLANS, YOUR PEOPLE</div><h1>Good things<br/>are better <em>together.</em></h1><p className="hero-text">Find your people for the things you want to do. Discover events, meet people who are going too, and make a plan together.</p><div className="hero-actions"><button className="button" onClick={() => navigate('events')}>Find your next plan <ArrowRight size={17}/></button><button className="text-button" onClick={() => navigate('how-it-works')}>How Maria works <span>↗</span></button></div><div className="hero-note"><span className="avatar-stack"><i>A</i><i>R</i><i>M</i><i>+</i></span><span>Less scrolling. More doing.</span></div></div>
         <div className="hero-art"><div className="art-orbit orbit-one"/><div className="art-orbit orbit-two"/><div className="photo-card card-back"><div className="photo-sun"/><div className="photo-hills"/><span>FIND YOUR SCENE</span></div><div className="photo-card card-front"><div className="concert-lights"><i/><i/><i/><i/></div><div className="concert-crowd"><i/><i/><i/><i/><i/><i/></div><div className="photo-caption"><span>FRIDAY NIGHT</span><strong>Live music, new friends.</strong></div></div><div className="floating-tag tag-top"><span className="tag-icon"><Users size={16}/></span><span><strong>Your kind of people</strong><small>Going to the same event</small></span></div><div className="floating-tag tag-bottom"><span className="match-heart"><Heart size={16} fill="currentColor"/></span><span><strong>It's a mutual!</strong><small>Your plan starts here</small></span></div><div className="sparkle sparkle-one">✳</div><div className="sparkle sparkle-two">✦</div></div>
       </section><section className="trust-strip"><div><ShieldCheck size={18}/><span>Adults-only social features</span></div><span className="strip-divider"/><div><Users size={18}/><span>Friendship-first by design</span></div><span className="strip-divider"/><div><MapPin size={18}/><span>Plans that happen in real life</span></div></section><section className="section featured"><div className="section-heading"><div><div className="eyebrow">MAKE A PLAN</div><h2>Something good is happening.</h2><p>Find an event. Find your people. Go together.</p></div><button className="text-button" onClick={() => navigate('events')}>Explore all events <ArrowRight size={16}/></button></div><EventGrid items={displayedEvents.slice(0,3)} onSelect={setSelectedEvent} saved={saved} onSave={toggleSave}/></section><section className="how-band"><div className="eyebrow">NO AWKWARD GUESSWORK</div><h2>From “I want to go”<br/>to “see you there.”</h2><div className="steps"><Step number="01" title="Find your thing" text="Explore local events that you'd genuinely enjoy."/><Step number="02" title="Meet your people" text="See who's interested and connect around a shared plan."/><Step number="03" title="Make it happen" text="Chat, coordinate, and head out with your new crew."/></div><button className="button button-light" onClick={() => navigate('events')}>Explore events <ArrowRight size={16}/></button></section></>}
+
+
+      {page === 'submit-event' && <section className="page-section narrow">
+        <div className="eyebrow">COMMUNITY EVENT SUBMISSIONS</div><h1 className="page-title">Know something <em>happening?</em></h1>
+        <p className="page-intro">Submit a public event for review. Submissions stay private until an authorized moderator approves them.</p>
+        {!user ? <div className="empty-state"><h3>Log in to submit an event</h3><button className="button" onClick={() => navigate('login')}>Log in <ArrowRight size={16}/></button></div> : <form className="quiz-panel" onSubmit={submitEvent}>
+          <label className="field-label">Event title<input required minLength={5} maxLength={160} value={submissionForm.title} onChange={e=>setSubmissionForm({...submissionForm,title:e.target.value})} /></label>
+          <label className="field-label">Description<textarea required minLength={10} maxLength={3000} rows={4} value={submissionForm.description} onChange={e=>setSubmissionForm({...submissionForm,description:e.target.value})} /></label>
+          <label className="field-label">Category<select required value={submissionForm.category} onChange={e=>setSubmissionForm({...submissionForm,category:e.target.value})}>{['Music','Art','Social','Outdoors','Culture','Food','Comedy','Workshops','Other'].map(c=><option key={c}>{c}</option>)}</select></label>
+          <label className="field-label">Venue<input required minLength={2} maxLength={160} value={submissionForm.venue_name} onChange={e=>setSubmissionForm({...submissionForm,venue_name:e.target.value})} /></label>
+          <label className="field-label">City<input required minLength={2} maxLength={100} value={submissionForm.city} onChange={e=>setSubmissionForm({...submissionForm,city:e.target.value})} /></label>
+          <label className="field-label">Starts at<input type="datetime-local" required value={submissionForm.starts_at} onChange={e=>setSubmissionForm({...submissionForm,starts_at:e.target.value})}/></label>
+          <label className="field-label">Ends at (optional)<input type="datetime-local" value={submissionForm.ends_at} onChange={e=>setSubmissionForm({...submissionForm,ends_at:e.target.value})}/></label>
+          <label className="field-label">Official event link (optional)<input type="url" placeholder="https://…" value={submissionForm.booking_url} onChange={e=>setSubmissionForm({...submissionForm,booking_url:e.target.value})}/></label>
+          {submissionMessage && <p className="form-message" role="status">{submissionMessage}</p>}
+          <button className="button" disabled={submissionBusy}>{submissionBusy?'Submitting…':'Submit for review'} <ArrowRight size={16}/></button>
+        </form>}
+        {user && <div className="quiz-results"><h2>Your submissions</h2>{mySubmissions.length ? <div className="submission-list">{mySubmissions.map(item=><article className="submission-row" key={item.id}><div><strong>{item.title}</strong><p>{item.city} · {new Date(item.starts_at).toLocaleString()}</p></div><span className={'submission-status '+item.status}>{item.status}</span></article>)}</div> : <p className="muted">You have not submitted any events yet.</p>}</div>}
+      </section>}
 
       {page === 'events' && <section className="page-section"><div className="eyebrow">YOUR CITY, YOUR SCENE</div><h1 className="page-title">Find something<br/><em>worth going to.</em></h1><p className="page-intro">Discover and save real events. Attendee participation is reserved for adults after trusted eligibility verification is available.</p><div className="event-tools"><label className="search-box"><Compass size={18}/><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search events or places" aria-label="Search events or places"/><span>⌘ K</span></label><div className="discovery-controls"><label className="date-filter">When<select value={dateRange} onChange={e => setDateRange(e.target.value)} aria-label="Filter events by date"><option value="any">Any time</option><option value="week">Next 7 days</option><option value="month">Next 30 days</option></select></label><div className="filter-row">{categories.map(item => <button key={item} className={category === item ? 'filter-chip selected' : 'filter-chip'} onClick={() => setCategory(item)}>{item}</button>)}</div></div></div>{filteredEvents.length ? <EventGrid items={filteredEvents} onSelect={setSelectedEvent} saved={saved} onSave={toggleSave}/> : <div className="empty-state"><Compass size={28}/><h3>No events found</h3><p>Try a different search or category.</p><button className="text-button" onClick={() => {setSearch('');setCategory('All events');setDateRange('any');}}>Clear filters</button></div>}{eventsLoadError && <p className="demo-notice" role="status">{eventsLoadError}</p>}<p className="demo-notice">{liveEvents.length ? 'Showing published event listings. Confirm details with the organizer before making plans.' : 'Preview events are sample content for the prototype, not verified live listings.'}</p></section>}
 
