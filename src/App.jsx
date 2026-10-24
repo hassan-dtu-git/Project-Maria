@@ -66,7 +66,13 @@ export default function App() {
     window.addEventListener('hashchange', onHash);
     if (supabase) {
       supabase.auth.getSession().then(({ data }) => setUser(data.session?.user ?? null));
-      const { data } = supabase.auth.onAuthStateChange((_event, session) => setUser(session?.user ?? null));
+      const { data } = supabase.auth.onAuthStateChange((event, session) => {
+        setUser(session?.user ?? null);
+        if (event === 'PASSWORD_RECOVERY') {
+          window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#reset-password`);
+          setPage('reset-password');
+        }
+      });
       return () => { window.removeEventListener('hashchange', onHash); data.subscription.unsubscribe(); };
     }
     return () => window.removeEventListener('hashchange', onHash);
@@ -422,12 +428,10 @@ export default function App() {
       }
       const { error } = await supabase.auth.updateUser({ password });
       if (error) throw error;
-      await supabase.auth.signOut();
-      setUser(null);
       setPassword('');
       setRecoveryPasswordConfirm('');
-      navigate('login');
-      setAuthMessage('Your password has been updated. Log in with your new password.');
+      navigate('profile');
+      setToast('Your password has been updated.');
     } catch (error) {
       setAuthMessage(error.message || 'Could not update your password. Request a fresh reset link and try again.');
     } finally {
