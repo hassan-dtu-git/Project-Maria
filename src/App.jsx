@@ -448,7 +448,7 @@ export default function App() {
       if (error) throw error;
       setModerationQueue(current => current.filter(entry => entry.id !== item.id));
       setModerationMessage(status === 'approved'
-        ? 'Submission approved for the next publishing step. It is not yet automatically copied to public events.'
+        ? 'Submission approved and published to the public event feed.'
         : 'Submission rejected and removed from the pending queue.');
     } catch (error) { setModerationMessage(error.message || 'Could not update this submission.'); }
     finally { setModerationBusyId(''); }
