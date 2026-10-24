@@ -11,10 +11,11 @@ The `build/mvp-foundation` branch contains:
 - Adult verification defaults to false and cannot be set by a normal browser session. A real verification workflow is not implemented; do not manually mark ordinary accounts verified.
 - Safety guidance, community guidelines, and draft Terms and Privacy pages.
 - Sign-up/login UI with optional Supabase Auth integration.
+- Signed-in users can edit their own display name, bio, and city through the RLS-protected profiles table.
 - Supabase/Postgres schema migrations for profiles, events, participation, swipes, matches, groups, messages, blocks, reports, terms acceptance, RLS, event-scoped swipe/match RPC, and basic swipe rate limiting.
 - CI workflow for a production frontend build.
 
-**This is still a prototype, not a production-ready service.** If Supabase is configured and has published future events, the website loads those listings; otherwise it uses sample listings. Saved published events are stored per signed-in user; sample-event saves remain temporary preview state. Adult eligibility is fail-closed in the database, with all profiles unverified by default. There is no production adult-verification workflow, so participation and user-to-user social features are intentionally unavailable until a trusted verification process is implemented and reviewed. Safety reports for published events and attendee profiles can be saved to the database, but moderator queues, notifications, and response SLAs are not implemented. Messaging UI, profile editing, account deletion, password recovery, moderation operations, and comprehensive rate limits remain unfinished.
+**This is still a prototype, not a production-ready service.** If Supabase is configured and has published future events, the website loads those listings; otherwise it uses sample listings. Saved published events are stored per signed-in user; sample-event saves remain temporary preview state. Adult eligibility is fail-closed in the database, with all profiles unverified by default. There is no production adult-verification workflow, so participation and user-to-user social features are intentionally unavailable until a trusted verification process is implemented and reviewed. Safety reports for published events and attendee profiles can be saved to the database, but moderator queues, notifications, and response SLAs are not implemented. Messaging UI, account deletion, password recovery, moderator operations, and comprehensive rate limits remain unfinished.
 
 ## Run locally
 
