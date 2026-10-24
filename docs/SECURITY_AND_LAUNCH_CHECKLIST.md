@@ -13,6 +13,8 @@ This checklist is intentionally conservative. A successful frontend build does n
 ## Security test matrix
 
 - Anonymous users cannot read profiles, event participants, matches, groups, messages, blocks, or reports.
+- `canUseAdultSocialFeatures` fails closed for a missing user, an incomplete verification check, a false verification result, or editable user metadata that claims adulthood.
+- The `delete-account` Edge Function rejects missing/invalid JWTs, anonymous users, requests without a recent signed password-authentication method, and confirmation values other than `DELETE`. Verify these negative cases without deleting any real account.
 - A signed-in user can only update their own profile; they cannot change privileged admin or suspension fields.
 - A user cannot create a match by inserting into matches or a swipe by inserting into swipes directly.
 - The record_event_swipe RPC rejects unauthenticated calls, self-swipes, users not participating in the event, suspended users, unpublished events, and blocked pairs.
@@ -45,7 +47,7 @@ Do not trust browser-side checks as authorization. Enforce access in Postgres RL
 - Implement an actual moderator queue and documented escalation/appeals process.
 - Confirm report submissions are persisted and reviewed; a report form without a working moderation path is not a safety system.
 - Provide a working block flow and ensure it affects discovery, matches, groups, and messages.
-- Implement account deletion, data access/export handling, privacy retention, and versioned terms acceptance.
+- Account deletion is implemented through a server-side Edge Function; validate it in an isolated test account, including refresh-token revocation and all data relationships, before relying on it operationally. Complete data access/export handling, privacy retention, and versioned terms acceptance.
 - Replace demo events with a trusted feed and validate outbound booking URLs.
 - Add end-to-end tests for every primary navigation link and critical user flow.
 - Have qualified counsel review Terms and Privacy Policy for the operator, launch jurisdiction, and real data practices.
