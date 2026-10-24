@@ -1,0 +1,6 @@
+project_id = "buqnovbvggpsaaouirrx"
+
+# This function validates the user JWT inside its handler so browser CORS OPTIONS
+# preflight can reach the handler before any Authorization header is sent.
+[functions.delete-account]
+verify_jwt = false
