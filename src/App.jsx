@@ -36,6 +36,10 @@ export default function App() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [profileData, setProfileData] = useState({ display_name: '', bio: '', city: '' });
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileMessage, setProfileMessage] = useState('');
   const [authBusy, setAuthBusy] = useState(false);
   const [authMessage, setAuthMessage] = useState('');
   const [reporting, setReporting] = useState(null);
@@ -90,6 +94,40 @@ export default function App() {
       }
     }
     loadAdultEligibility();
+    return () => { cancelled = true; };
+  }, [user?.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadProfile() {
+      if (!supabase || !user) {
+        setProfileData({ display_name: '', bio: '', city: '' });
+        setProfileLoading(false);
+        setProfileMessage('');
+        return;
+      }
+      setProfileLoading(true);
+      setProfileMessage('');
+      try {
+        const { data, error } = await supabase.from('profiles')
+          .select('display_name,bio,city')
+          .eq('id', user.id)
+          .maybeSingle();
+        if (cancelled) return;
+        if (error) throw error;
+        if (!data) throw new Error('Your profile is not available yet. Sign out and back in, then try again.');
+        setProfileData({
+          display_name: data.display_name || '',
+          bio: data.bio || '',
+          city: data.city || ''
+        });
+      } catch (error) {
+        if (!cancelled) setProfileMessage(error.message || 'Could not load your profile.');
+      } finally {
+        if (!cancelled) setProfileLoading(false);
+      }
+    }
+    loadProfile();
     return () => { cancelled = true; };
   }, [user?.id]);
 
@@ -337,6 +375,46 @@ export default function App() {
     finally { setAuthBusy(false); }
   }
   async function signOut() { if (supabase) await supabase.auth.signOut(); setUser(null); navigate('home'); setToast('You have signed out.'); }
+  async function saveProfile(event) {
+    event.preventDefault();
+    setProfileMessage('');
+    if (!user || !supabase) {
+      setProfileMessage('Sign in with a connected account to update your profile.');
+      return;
+    }
+    const displayName = profileData.display_name.trim();
+    const bio = profileData.bio.trim();
+    const city = profileData.city.trim();
+    if (!displayName) {
+      setProfileMessage('Enter a display name.');
+      return;
+    }
+    if (displayName.length > 60 || bio.length > 500 || city.length > 100) {
+      setProfileMessage('Check the field length limits and try again.');
+      return;
+    }
+    setProfileSaving(true);
+    try {
+      const { data, error } = await supabase.from('profiles')
+        .update({
+          display_name: displayName,
+          bio,
+          city: city || null
+        })
+        .eq('id', user.id)
+        .select('id')
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) throw new Error('No profile row was updated. Try signing out and back in.');
+      setProfileData({ display_name: displayName, bio, city });
+      setProfileMessage('Profile saved.');
+    } catch (error) {
+      setProfileMessage(error.message || 'Could not save your profile. Please try again.');
+    } finally {
+      setProfileSaving(false);
+    }
+  }
+
   function openReport(context = { type: 'event' }) {
     setReporting(context);
     setReportReason('inappropriate_content');
@@ -436,7 +514,7 @@ export default function App() {
         <div className="safety-callout"><ShieldCheck size={20}/><span>Keep conversations respectful and meet in public places. <a href="#safety">Review safety guidance</a>. Messaging is not connected yet.</span></div>
       </section>}
 
-      {page === 'profile' && <section className="page-section narrow"><div className="eyebrow">YOUR ACCOUNT</div><h1 className="page-title">Make it <em>you.</em></h1>{user ? <div className="profile-panel"><div className="profile-avatar">{(user.user_metadata?.full_name || user.email || 'M').slice(0,1).toUpperCase()}</div><h2>{user.user_metadata?.full_name || 'Maria member'}</h2><p>{user.email}</p><p className="muted">Profile editing, discovery preferences, account deletion, and production privacy controls need backend implementation before launch.</p><button className="button button-outline" onClick={signOut}>Sign out</button></div> : <div className="empty-state"><Users size={27}/><h3>Sign in to continue</h3><button className="button" onClick={() => navigate('login')}>Log in <ArrowRight size={16}/></button></div>}<div className="safety-callout"><ShieldCheck size={20}/><span>Review our <a href="#safety">safety guidance</a> before meeting anyone from an online service.</span></div></section>}
+      {page === 'profile' && <section className="page-section narrow"><div className="eyebrow">YOUR ACCOUNT</div><h1 className="page-title">Make it <em>you.</em></h1>{user ? <div className="profile-panel"><div className="profile-avatar">{(profileData.display_name || user.email || 'M').slice(0,1).toUpperCase()}</div><h2>{profileData.display_name || 'Maria member'}</h2><p>{user.email}</p>{profileLoading ? <p className="muted">Loading your profile…</p> : <form onSubmit={saveProfile}><label className="field-label">Display name<input value={profileData.display_name} onChange={e => setProfileData(current => ({ ...current, display_name: e.target.value }))} autoComplete="name" maxLength={60} required /></label><label className="field-label">Bio<textarea value={profileData.bio} onChange={e => setProfileData(current => ({ ...current, bio: e.target.value }))} maxLength={500} rows={4} placeholder="A little about your interests (optional)." /></label><label className="field-label">City<input value={profileData.city} onChange={e => setProfileData(current => ({ ...current, city: e.target.value }))} autoComplete="address-level2" maxLength={100} placeholder="City (optional)" /></label>{profileMessage && <p className="form-message" role="status">{profileMessage}</p>}<button className="button" disabled={profileSaving || profileLoading}>{profileSaving ? 'Saving…' : 'Save profile'} <Check size={16}/></button></form>}<p className="muted">Adult eligibility, account privileges, and safety status cannot be changed from this page. Account deletion and privacy controls still need implementation.</p><button className="button button-outline" onClick={signOut}>Sign out</button></div> : <div className="empty-state"><Users size={27}/><h3>Sign in to continue</h3><button className="button" onClick={() => navigate('login')}>Log in <ArrowRight size={16}/></button></div>}<div className="safety-callout"><ShieldCheck size={20}/><span>Review our <a href="#safety">safety guidance</a> before meeting anyone from an online service.</span></div></section>}
     </main>
 
     <footer className="site-footer"><div className="footer-top"><a className="brand footer-brand" href="#" onClick={e => {e.preventDefault();navigate('home')}}><span className="brand-mark">m.</span><span>maria</span></a><p>Make plans. Find your people.<br/>Go together.</p><button className="button button-light" onClick={() => navigate('events')}>Find a plan <ArrowRight size={15}/></button></div><div className="footer-bottom"><span>© 2026 Maria. Built around doing things together.</span><div><a href="#safety">Safety</a><a href="#guidelines">Guidelines</a><a href="#terms">Terms</a><a href="#privacy">Privacy</a></div><span className="preview-label">EARLY PREVIEW</span></div></footer>
