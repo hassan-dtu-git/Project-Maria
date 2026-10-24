@@ -39,6 +39,10 @@ export default function App() {
   const [reportReason, setReportReason] = useState('Inappropriate behaviour');
   const [reportSubmitted, setReportSubmitted] = useState(false);
   const [eventsLoadError, setEventsLoadError] = useState('');
+  const [liveEvents, setLiveEvents] = useState([]);
+  const [joinedEventIds, setJoinedEventIds] = useState([]);
+  const [joinBusy, setJoinBusy] = useState(false);
+  const [joinMessage, setJoinMessage] = useState('');
 
   useEffect(() => {
     const onHash = () => { setPage(getInitialPage()); setMobileOpen(false); window.scrollTo(0, 0); };
@@ -67,6 +71,7 @@ export default function App() {
         return;
       }
       const colors = ['lavender', 'peach', 'mint', 'sky', 'rose', 'butter'];
+      setEventsLoadError('');
       setLiveEvents((data || []).map(row => {
         const icon = /music|concert|gig/i.test(row.category) ? Music2
           : /art|creative|craft/i.test(row.category) ? Sparkles
