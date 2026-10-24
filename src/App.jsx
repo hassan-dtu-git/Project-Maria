@@ -18,7 +18,7 @@ const categories = ['All events', 'Music', 'Art', 'Social', 'Outdoors', 'Culture
 
 function getInitialPage() {
   const hash = window.location.hash.replace('#', '');
-  return ['events', 'how-it-works', 'safety', 'terms', 'privacy', 'guidelines', 'login', 'signup', 'matches', 'profile'].includes(hash) ? hash : 'home';
+  return ['events', 'how-it-works', 'safety', 'terms', 'privacy', 'guidelines', 'login', 'signup', 'matches', 'people', 'profile'].includes(hash) ? hash : 'home';
 }
 
 export default function App() {
@@ -43,6 +43,11 @@ export default function App() {
   const [joinedEventIds, setJoinedEventIds] = useState([]);
   const [joinBusy, setJoinBusy] = useState(false);
   const [joinMessage, setJoinMessage] = useState('');
+  const [discoveryEventId, setDiscoveryEventId] = useState('');
+  const [discoveryPeople, setDiscoveryPeople] = useState([]);
+  const [peopleBusy, setPeopleBusy] = useState(false);
+  const [swipeBusy, setSwipeBusy] = useState(false);
+  const [swipeNotice, setSwipeNotice] = useState('');
 
   useEffect(() => {
     const onHash = () => { setPage(getInitialPage()); setMobileOpen(false); window.scrollTo(0, 0); };
@@ -179,6 +184,7 @@ export default function App() {
       <button className="mobile-menu" onClick={() => setMobileOpen(!mobileOpen)} aria-label="Toggle navigation">{mobileOpen ? <X size={21}/> : <Menu size={21}/>}</button>
       <nav className={mobileOpen ? 'main-nav open' : 'main-nav'} aria-label="Main navigation">
         <a href="#events" className={page === 'events' ? 'active' : ''}>Explore events</a>
+        <a href="#people" className={page === 'people' ? 'active' : ''}>Meet people</a>
         <a href="#how-it-works" className={page === 'how-it-works' ? 'active' : ''}>How it works</a>
         <a href="#safety" className={page === 'safety' ? 'active' : ''}>Safety</a>
         {user ? <><a href="#matches">My list <span className="count">{saved.length}</span></a><button className="nav-login" onClick={signOut}>Sign out</button></> : <><a href="#login" className="nav-login">Log in</a><a href="#signup" className="button button-small">Get started <ArrowRight size={15}/></a></>}
