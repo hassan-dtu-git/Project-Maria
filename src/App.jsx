@@ -86,6 +86,45 @@ export default function App() {
   const [moderationMessage, setModerationMessage] = useState('');
 
   useEffect(() => {
+    let cancelled = false;
+    async function loadAdminState() {
+      if (!supabase || !user) {
+        setIsAdmin(false);
+        setModerationQueue([]);
+        return;
+      }
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('is_admin')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (cancelled) return;
+      const admin = !profileError && profile?.is_admin === true;
+      setIsAdmin(admin);
+      if (!admin) {
+        setModerationQueue([]);
+        return;
+      }
+      const { data: submissions, error: submissionsError } = await supabase
+        .from('event_submissions')
+        .select('id,title,description,category,venue_name,city,starts_at,ends_at,booking_url,created_at,status')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: true })
+        .limit(100);
+      if (cancelled) return;
+      if (submissionsError) {
+        setModerationMessage('Could not load the event review queue. Check admin access and try again.');
+        setModerationQueue([]);
+        return;
+      }
+      setModerationQueue(submissions || []);
+      setModerationMessage('');
+    }
+    loadAdminState();
+    return () => { cancelled = true; };
+  }, [user?.id, page]);
+
+  useEffect(() => {
     const onHash = () => { setPage(getInitialPage()); setMobileOpen(false); window.scrollTo(0, 0); };
     window.addEventListener('hashchange', onHash);
     if (supabase) {
@@ -744,7 +783,7 @@ export default function App() {
       {page === 'moderation' && <section className="page-section narrow">
         <div className="eyebrow">ADMINISTRATION</div><h1 className="page-title">Event <em>review queue.</em></h1>
         {!user ? <div className="empty-state"><h3>Sign in with an authorized admin account</h3><button className="button" onClick={() => navigate('login')}>Log in <ArrowRight size={16}/></button></div> : !isAdmin ? <div className="empty-state"><ShieldCheck size={27}/><h3>Administrator access required</h3><p>Only accounts explicitly marked as administrators can access this queue.</p></div> : <>
-          <p className="page-intro">Review community-submitted events before publication. Approval here records the review decision; automatic publishing is a separate step not yet enabled.</p>
+          <p className="page-intro">Review community-submitted events before publication. Approved submissions are published automatically after the review decision is saved.</p>
           {moderationMessage && <p className="form-message" role="status">{moderationMessage}</p>}
           {moderationQueue.length ? <div className="submission-list">{moderationQueue.map(item=><article className="moderation-card" key={item.id}>
             <div className="eyebrow">{item.category} · Submitted {new Date(item.created_at).toLocaleDateString()}</div><h2>{item.title}</h2><p>{item.description}</p><p className="muted">{item.venue_name}, {item.city} · {new Date(item.starts_at).toLocaleString()}</p>{item.ends_at && <p className="muted">Ends {new Date(item.ends_at).toLocaleString()}</p>}{item.booking_url && <p><a href={item.booking_url} target="_blank" rel="noreferrer">Open event source ↗</a></p>}
