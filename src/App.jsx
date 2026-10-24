@@ -111,9 +111,12 @@ export default function App() {
 
   useEffect(() => {
     if (page !== 'people' || !user) return;
-    if (discoveryEventId && joinedEventIds.includes(discoveryEventId)) return;
-    setDiscoveryEventId(joinedEventIds[0] || '');
-  }, [page, user?.id, discoveryEventId, joinedEventIds]);
+    const eligibleEventIds = liveEvents
+      .filter(item => joinedEventIds.includes(item.id))
+      .map(item => item.id);
+    if (discoveryEventId && eligibleEventIds.includes(discoveryEventId)) return;
+    setDiscoveryEventId(eligibleEventIds[0] || '');
+  }, [page, user?.id, discoveryEventId, joinedEventIds, liveEvents]);
 
   useEffect(() => {
     if (page !== 'people' || !supabase || !user || !discoveryEventId) {
@@ -169,6 +172,7 @@ export default function App() {
   }, [toast]);
 
   const displayedEvents = liveEvents.length > 0 ? liveEvents : events;
+  const joinedLiveEvents = liveEvents.filter(event => joinedEventIds.includes(event.id));
   const filteredEvents = useMemo(() => displayedEvents.filter(event =>
     (category === 'All events' || event.category === category) &&
     (event.title + ' ' + event.place + ' ' + event.category).toLowerCase().includes(search.toLowerCase())
@@ -288,8 +292,8 @@ export default function App() {
         <h1 className="page-title">Meet people<br/><em>going too.</em></h1>
         <p className="page-intro">Discovery is limited to people who share an event with you. You choose whether to like or pass; a match is created only when interest is mutual.</p>
         {!user ? <div className="empty-state"><Users size={27}/><h3>Log in to meet people</h3><button className="button" onClick={() => navigate('login')}>Log in <ArrowRight size={16}/></button></div>
-          : !joinedEventIds.length ? <div className="empty-state"><CalendarDays size={27}/><h3>Join an event first</h3><p>Mark yourself interested in a published event to discover other participants.</p><button className="button" onClick={() => navigate('events')}>Explore events <ArrowRight size={16}/></button></div>
-          : <><label className="field-label">Choose an event<select value={discoveryEventId} onChange={e => setDiscoveryEventId(e.target.value)}>{liveEvents.filter(item => joinedEventIds.includes(item.id)).map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>
+          : !joinedLiveEvents.length ? <div className="empty-state"><CalendarDays size={27}/><h3>Join a current event first</h3><p>People discovery only works for published upcoming events loaded from Supabase. Mark interest in a live event, and it will appear here.</p><button className="button" onClick={() => navigate('events')}>Explore events <ArrowRight size={16}/></button></div>
+          : <><label className="field-label">Choose an event<select value={discoveryEventId} onChange={e => setDiscoveryEventId(e.target.value)}>{joinedLiveEvents.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>
             {peopleBusy ? <div className="empty-state"><p>Loading participants…</p></div>
               : discoveryPeople.length ? <div className="feature-list">{discoveryPeople.map(person => <article className="step" key={person.id}><div className="profile-avatar">{(person.display_name || 'M').slice(0,1).toUpperCase()}</div><h3>{person.display_name || 'Maria member'}</h3><p>{person.bio || 'Interested in attending the same event.'}</p>{person.city && <p className="muted">{person.city}</p>}<div className="modal-actions"><button className="button button-outline" disabled={swipeBusy} onClick={() => handleSwipe(person, 'pass')}>Pass</button><button className="button" disabled={swipeBusy} onClick={() => handleSwipe(person, 'like')}>Interested <Heart size={15}/></button></div></article>)}</div>
               : <div className="empty-state"><Users size={27}/><h3>No more profiles right now</h3><p>Check back when more people join this event.</p></div>}
