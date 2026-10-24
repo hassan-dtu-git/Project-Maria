@@ -34,6 +34,12 @@ The initial migration adds a database rolling-window limit for event swipes (30 
 
 Do not trust browser-side checks as authorization. Enforce access in Postgres RLS and trusted server-side functions.
 
+## Age policy and in-person safety
+
+- Decide and publish a minimum-age policy before public launch. Because the service introduces people for in-person meetups, an initial 18+ MVP with an appropriate age gate is the safer default to evaluate.
+- Do not allow adults and minors to be matched together. If the product is intended to support minors, do not launch that flow without separate age cohorts, stronger safeguarding, a qualified legal review, and a moderation/incident response process designed for minors.
+- A date-of-birth field or self-attestation alone is not strong age verification. Select controls proportionate to the risks and applicable law while minimizing collection of sensitive identity data.
+
 ## Product and operations
 
 - Implement an actual moderator queue and documented escalation/appeals process.
