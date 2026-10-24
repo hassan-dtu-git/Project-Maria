@@ -38,6 +38,7 @@ export default function App() {
   const [reporting, setReporting] = useState(null);
   const [reportReason, setReportReason] = useState('Inappropriate behaviour');
   const [reportSubmitted, setReportSubmitted] = useState(false);
+  const [eventsLoadError, setEventsLoadError] = useState('');
 
   useEffect(() => {
     const onHash = () => { setPage(getInitialPage()); setMobileOpen(false); window.scrollTo(0, 0); };
