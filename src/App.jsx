@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import { recommendEvents } from './recommendations.js';
 import { ArrowRight, CalendarDays, Check, ChevronDown, Compass, Heart, MapPin, Menu, MessageCircle, Music2, ShieldCheck, Sparkles, Users, X } from 'lucide-react';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -652,7 +653,7 @@ export default function App() {
           <button className="button" disabled={quizSaving || quizLoading || !user}>{quizSaving ? 'Saving…' : quizLoading ? 'Loading preferences…' : 'Save my preferences'} <Check size={16}/></button>
           <p className="demo-notice">These answers personalize recommendations, not eligibility. They cannot unlock attendee discovery or matching. You can update your choices at any time.</p>
         </form>
-        {quizInterests.length > 0 && <div className="quiz-results"><div className="eyebrow">YOUR CURRENT INTEREST SNAPSHOT</div><h2>Events that may fit your interests</h2><p className="muted">This is an explainable preview based on event categories and titles, not an AI-generated personality score.</p><EventGrid items={displayedEvents.filter(event => quizInterests.some(interest => { const text = (event.title + ' ' + event.category + ' ' + event.description).toLowerCase(); const map = {'Live music':['music','live','concert','indie'],'Art & making':['art','sketch','craft','creative'],'Comedy':['comedy','laugh','stand-up'],'Food & coffee':['food','coffee','chai','cafe'],'Board games':['game','board'],'Films & culture':['film','culture','movie','museum'],'Walking & outdoors':['outdoor','park','walk','hike'],'Fitness & sports':['run','fitness','sport'],'Technology':['tech','technology','coding'],'Books & learning':['book','learn','workshop'],'Photography':['photo','camera'],'Volunteering':['volunteer','community']}; return (map[interest] || [interest.toLowerCase()]).some(term => text.includes(term)); })).slice(0,3)} onSelect={setSelectedEvent} saved={saved} onSave={toggleSave}/></div>}
+        {quizInterests.length > 0 && <div className="quiz-results"><div className="eyebrow">YOUR CURRENT INTEREST SNAPSHOT</div><h2>Events that may fit your interests</h2><p className="muted">This is an explainable preview based on event categories and titles, not an AI-generated personality score.</p><EventGrid items={recommendEvents(displayedEvents, quizInterests, 3)} onSelect={setSelectedEvent} saved={saved} onSave={toggleSave}/></div>}
       </section>}
 
       {page === 'people' && <section className="page-section narrow">
