@@ -39,8 +39,13 @@ export default function App() {
   const [authBusy, setAuthBusy] = useState(false);
   const [authMessage, setAuthMessage] = useState('');
   const [reporting, setReporting] = useState(null);
-  const [reportReason, setReportReason] = useState('Inappropriate behaviour');
+  const [reportReason, setReportReason] = useState('inappropriate_content');
+  const [reportDetails, setReportDetails] = useState('');
+  const [reportEventId, setReportEventId] = useState('');
+  const [reportBusy, setReportBusy] = useState(false);
+  const [reportError, setReportError] = useState('');
   const [reportSubmitted, setReportSubmitted] = useState(false);
+  const [reportPersisted, setReportPersisted] = useState(false);
   const [eventsLoadError, setEventsLoadError] = useState('');
   const [liveEvents, setLiveEvents] = useState([]);
   const [joinedEventIds, setJoinedEventIds] = useState([]);
@@ -333,10 +338,59 @@ export default function App() {
     finally { setAuthBusy(false); }
   }
   async function signOut() { if (supabase) await supabase.auth.signOut(); setUser(null); navigate('home'); setToast('You have signed out.'); }
-  function reportUser() {
+  function openReport(context = { type: 'event' }) {
+    setReporting(context);
+    setReportReason('inappropriate_content');
+    setReportDetails('');
+    setReportEventId('');
+    setReportError('');
+    setReportSubmitted(false);
+    setReportPersisted(false);
+  }
+  function closeReport() {
+    setReporting(null);
+    setReportError('');
+    setReportDetails('');
+    setReportSubmitted(false);
+    setReportPersisted(false);
+  }
+  async function reportUser() {
     if (!user) { navigate('login'); setToast('Sign in to submit a report.'); return; }
-    setReportSubmitted(true);
-    // Demo UI only: persist reports to a secured backend before public launch.
+    if (!supabase) {
+      setReportError('Report submission requires a connected, signed-in account. No report was sent.');
+      return;
+    }
+    const target = reporting?.type === 'user' && reporting.id
+      ? { reported_user_id: reporting.id }
+      : { event_id: reporting?.id || reportEventId };
+    if (!target.reported_user_id && !target.event_id) {
+      setReportError('Choose a published event to attach this report to.');
+      return;
+    }
+    const selectedEvent = target.event_id
+      ? liveEvents.find(item => item.id === target.event_id)
+      : null;
+    if (target.event_id && reporting?.id == null && !selectedEvent) {
+      setReportError('Choose a published event, not a sample preview listing.');
+      return;
+    }
+    setReportBusy(true);
+    setReportError('');
+    try {
+      const { error } = await supabase.from('reports').insert({
+        reporter_id: user.id,
+        ...target,
+        reason: reportReason,
+        details: reportDetails.trim()
+      });
+      if (error) throw error;
+      setReportPersisted(true);
+      setReportSubmitted(true);
+    } catch (error) {
+      setReportError(error.message || 'Could not submit the report. Please try again.');
+    } finally {
+      setReportBusy(false);
+    }
   }
 
   return <div className="app-shell">
@@ -379,7 +433,7 @@ export default function App() {
           : !joinedLiveEvents.length ? <div className="empty-state"><CalendarDays size={27}/><h3>Join a current event first</h3><p>People discovery only works for published upcoming events loaded from Supabase. Mark interest in a live event, and it will appear here.</p><button className="button" onClick={() => navigate('events')}>Explore events <ArrowRight size={16}/></button></div>
           : <><label className="field-label">Choose an event<select value={discoveryEventId} onChange={e => setDiscoveryEventId(e.target.value)}>{joinedLiveEvents.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>
             {peopleBusy ? <div className="empty-state"><p>Loading participants…</p></div>
-              : discoveryPeople.length ? <div className="feature-list">{discoveryPeople.map(person => <article className="step" key={person.id}><div className="profile-avatar">{(person.display_name || 'M').slice(0,1).toUpperCase()}</div><h3>{person.display_name || 'Maria member'}</h3><p>{person.bio || 'Interested in attending the same event.'}</p>{person.city && <p className="muted">{person.city}</p>}<div className="modal-actions"><button className="button button-outline" disabled={swipeBusy} onClick={() => handleSwipe(person, 'pass')}>Pass</button><button className="button" disabled={swipeBusy} onClick={() => handleSwipe(person, 'like')}>Interested <Heart size={15}/></button></div></article>)}</div>
+              : discoveryPeople.length ? <div className="feature-list">{discoveryPeople.map(person => <article className="step" key={person.id}><div className="profile-avatar">{(person.display_name || 'M').slice(0,1).toUpperCase()}</div><h3>{person.display_name || 'Maria member'}</h3><p>{person.bio || 'Interested in attending the same event.'}</p>{person.city && <p className="muted">{person.city}</p>}<div className="modal-actions"><button className="button button-outline" disabled={swipeBusy} onClick={() => handleSwipe(person, 'pass')}>Pass</button><button className="button" disabled={swipeBusy} onClick={() => handleSwipe(person, 'like')}>Interested <Heart size={15}/></button></div><button className="text-button" onClick={() => openReport({ type: 'user', id: person.id, label: person.display_name || 'Maria member' })}><ShieldCheck size={15}/> Report profile</button></article>)}</div>
               : <div className="empty-state"><Users size={27}/><h3>No more profiles right now</h3><p>Check back when more people join this event.</p></div>}
             {swipeNotice && <p className="form-message" role="status">{swipeNotice}</p>}
           </>}
@@ -391,10 +445,10 @@ export default function App() {
 
     <footer className="site-footer"><div className="footer-top"><a className="brand footer-brand" href="#" onClick={e => {e.preventDefault();navigate('home')}}><span className="brand-mark">m.</span><span>maria</span></a><p>Make plans. Find your people.<br/>Go together.</p><button className="button button-light" onClick={() => navigate('events')}>Find a plan <ArrowRight size={15}/></button></div><div className="footer-bottom"><span>© 2026 Maria. Built around doing things together.</span><div><a href="#safety">Safety</a><a href="#guidelines">Guidelines</a><a href="#terms">Terms</a><a href="#privacy">Privacy</a></div><span className="preview-label">EARLY PREVIEW</span></div></footer>
 
-    {selectedEvent && <div className="modal-backdrop" role="presentation" onMouseDown={e => {if(e.target === e.currentTarget) setSelectedEvent(null)}}><section className="event-modal" role="dialog" aria-modal="true" aria-labelledby="event-modal-title"><button className="modal-close" onClick={() => setSelectedEvent(null)} aria-label="Close event details"><X size={20}/></button><div className={'event-art modal-art ' + selectedEvent.color}><selectedEvent.icon size={42}/><span>{selectedEvent.category}</span></div><div className="modal-content"><div className="eyebrow">EVENT DETAILS</div><h2 id="event-modal-title">{selectedEvent.title}</h2><p>{selectedEvent.description}</p><div className="modal-meta"><span><CalendarDays size={17}/>{selectedEvent.date}</span><span><MapPin size={17}/>{selectedEvent.place}</span><span><Users size={17}/>{selectedEvent.people} interested</span></div><div className="modal-price">{selectedEvent.price}</div><div className="modal-actions"><button className="button" onClick={() => {toggleSave(selectedEvent.id);}}>{saved.includes(selectedEvent.id) ? <span><Check size={16}/> Saved</span> : <span><Heart size={16}/> Save this event</span>}</button>{selectedEvent.isLive ? <button className="button button-outline" disabled={joinBusy || joinedEventIds.includes(selectedEvent.id) || (!!user && (!adultVerificationChecked || !adultVerified))} onClick={() => joinEvent(selectedEvent)}>{joinedEventIds.includes(selectedEvent.id) ? <span><Check size={16}/> Interested</span> : joinBusy ? 'Saving…' : !user ? <span>Log in to mark interest <ArrowRight size={16}/></span> : !adultVerificationChecked ? 'Checking eligibility…' : !adultVerified ? 'Participation unavailable' : <span>Mark interest <ArrowRight size={16}/></span>}</button> : <button className="button button-outline" onClick={() => {setSelectedEvent(null);navigate(user ? 'people' : 'signup')}}>Find people <ArrowRight size={16}/></button>}</div>{joinMessage && <p className="form-message" role="status">{joinMessage}</p>}{selectedEvent.bookingUrl && <p><a href={selectedEvent.bookingUrl} target="_blank" rel="noreferrer">Visit event details ↗</a></p>}<p className="demo-notice">{selectedEvent.isLive ? 'Published listing. Check the organizer’s details before attending.' : 'Sample listing only. Confirm event details with the organizer before making plans.'}</p></div></section></div>}
-    {reporting && <div className="modal-backdrop"><section className="small-modal" role="dialog" aria-modal="true" aria-labelledby="report-title"><button className="modal-close" onClick={() => {setReporting(null);setReportSubmitted(false)}} aria-label="Close report"><X size={20}/></button><h2 id="report-title">Report a concern</h2>{reportSubmitted ? <><p>Your report preview was recorded only in this page state. No moderation team has been notified.</p><button className="button" onClick={() => {setReporting(null);setReportSubmitted(false)}}>Close</button></> : <><p>Choose the closest reason. Please do not include unnecessary sensitive details.</p><label className="field-label">Reason<select value={reportReason} onChange={e => setReportReason(e.target.value)}><option>Inappropriate behaviour</option><option>Harassment or threats</option><option>Fake profile or scam</option><option>Privacy concern</option><option>Other safety concern</option></select></label><button className="button" onClick={reportUser}>Submit report</button></>}</section></div>}
+    {selectedEvent && <div className="modal-backdrop" role="presentation" onMouseDown={e => {if(e.target === e.currentTarget) setSelectedEvent(null)}}><section className="event-modal" role="dialog" aria-modal="true" aria-labelledby="event-modal-title"><button className="modal-close" onClick={() => setSelectedEvent(null)} aria-label="Close event details"><X size={20}/></button><div className={'event-art modal-art ' + selectedEvent.color}><selectedEvent.icon size={42}/><span>{selectedEvent.category}</span></div><div className="modal-content"><div className="eyebrow">EVENT DETAILS</div><h2 id="event-modal-title">{selectedEvent.title}</h2><p>{selectedEvent.description}</p><div className="modal-meta"><span><CalendarDays size={17}/>{selectedEvent.date}</span><span><MapPin size={17}/>{selectedEvent.place}</span><span><Users size={17}/>{selectedEvent.people} interested</span></div><div className="modal-price">{selectedEvent.price}</div><div className="modal-actions"><button className="button" onClick={() => {toggleSave(selectedEvent.id);}}>{saved.includes(selectedEvent.id) ? <span><Check size={16}/> Saved</span> : <span><Heart size={16}/> Save this event</span>}</button>{selectedEvent.isLive ? <button className="button button-outline" disabled={joinBusy || joinedEventIds.includes(selectedEvent.id) || (!!user && (!adultVerificationChecked || !adultVerified))} onClick={() => joinEvent(selectedEvent)}>{joinedEventIds.includes(selectedEvent.id) ? <span><Check size={16}/> Interested</span> : joinBusy ? 'Saving…' : !user ? <span>Log in to mark interest <ArrowRight size={16}/></span> : !adultVerificationChecked ? 'Checking eligibility…' : !adultVerified ? 'Participation unavailable' : <span>Mark interest <ArrowRight size={16}/></span>}</button> : <button className="button button-outline" onClick={() => {setSelectedEvent(null);navigate(user ? 'people' : 'signup')}}>Find people <ArrowRight size={16}/></button>}</div>{joinMessage && <p className="form-message" role="status">{joinMessage}</p>}{selectedEvent.isLive && <button className="text-button" onClick={() => openReport({ type: 'event', id: selectedEvent.id, label: selectedEvent.title })}><ShieldCheck size={15}/> Report this event</button>}{selectedEvent.bookingUrl && <p><a href={selectedEvent.bookingUrl} target="_blank" rel="noreferrer">Visit event details ↗</a></p>}<p className="demo-notice">{selectedEvent.isLive ? 'Published listing. Check the organizer’s details before attending.' : 'Sample listing only. Confirm event details with the organizer before making plans.'}</p></div></section></div>}
+    {reporting && <div className="modal-backdrop" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget && !reportBusy) closeReport(); }}><section className="small-modal" role="dialog" aria-modal="true" aria-labelledby="report-title"><button className="modal-close" onClick={closeReport} disabled={reportBusy} aria-label="Close report"><X size={20}/></button><h2 id="report-title">Report a concern</h2>{reportSubmitted ? <><p>Your report was saved to Maria’s reports table. The moderation queue and moderator notifications are not connected yet, so this prototype cannot confirm that anyone has reviewed it.</p><button className="button" onClick={closeReport}>Close</button></> : <><p>Choose the reason that best fits. Only include details relevant to this event or profile; avoid unnecessary personal information.</p>{reporting.type === 'user' ? <p className="demo-notice">Reporting profile: <strong>{reporting.label || 'Maria member'}</strong></p> : reporting.id ? <p className="demo-notice">Reporting published event: <strong>{reporting.label || 'Event'}</strong></p> : <label className="field-label">Published event<select value={reportEventId} onChange={e => setReportEventId(e.target.value)} required><option value="">Choose an event…</option>{liveEvents.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>}{!user && <p className="form-message" role="status">Sign in before submitting a report.</p>}<label className="field-label">Reason<select value={reportReason} onChange={e => setReportReason(e.target.value)}><option value="harassment">Harassment or threats</option><option value="spam">Spam or unsolicited promotion</option><option value="fake_profile">Fake profile or scam</option><option value="unsafe_behavior">Unsafe behavior</option><option value="inappropriate_content">Inappropriate content or behavior</option><option value="other">Other / privacy concern</option></select></label><label className="field-label">Details (optional)<textarea value={reportDetails} onChange={e => setReportDetails(e.target.value)} maxLength={2000} rows={4} placeholder="Add only relevant context (up to 2,000 characters)." /></label>{reportError && <p className="form-message" role="alert">{reportError}</p>}<button className="button" disabled={reportBusy || !user}>{reportBusy ? 'Submitting…' : 'Submit report'} <ArrowRight size={16}/></button></>}</section></div>}
     {toast && <div className="toast" role="status">{toast}</div>}
-    <button className="report-shortcut" onClick={() => {setReporting('community');setReportSubmitted(false)}} title="Report a safety concern"><ShieldCheck size={17}/><span>Safety</span></button>
+    <button className="report-shortcut" onClick={() => openReport({ type: 'event' })} title="Report a safety concern"><ShieldCheck size={17}/><span>Safety</span></button>
   </div>;
 }
 
