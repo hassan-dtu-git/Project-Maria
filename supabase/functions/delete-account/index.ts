@@ -94,6 +94,14 @@ Deno.serve(async (req: Request) => {
     const supabaseAdmin = createClient(projectUrl, secretKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
+    // Revoke refresh tokens on every device before deleting the Auth record.
+    // Supabase access tokens remain valid until expiry, so the database authorization
+    // layer must continue to fail closed once the user's profile has been removed.
+    const { error: revokeError } = await supabaseAdmin.auth.admin.signOut(tokenMatch[1], 'global');
+    if (revokeError) {
+      console.error("delete-account session revocation warning", revokeError.message);
+    }
+
     const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(claims.sub, false);
     if (deleteError) {
       console.error("delete-account admin deletion failed", deleteError.message);
