@@ -158,6 +158,33 @@ export default function App() {
     return () => { cancelled = true; };
   }, [user?.id]);
 
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadUserPreferences() {
+      if (!supabase || !user) {
+        setQuizInterests([]); setQuizSocialStyle('small_groups'); setQuizGroupSize('small'); setQuizTimes([]); setQuizLoading(false); setMySubmissions([]);
+        return;
+      }
+      setQuizLoading(true);
+      const [preferences, submissions] = await Promise.all([
+        supabase.from('user_match_preferences').select('interests,social_style,group_size,preferred_times').eq('user_id', user.id).maybeSingle(),
+        supabase.from('event_submissions').select('id,title,city,starts_at,status,created_at').eq('submitted_by', user.id).order('created_at', {ascending:false}).limit(20)
+      ]);
+      if (cancelled) return;
+      if (preferences.data) {
+        setQuizInterests(preferences.data.interests || []);
+        setQuizSocialStyle(preferences.data.social_style || 'small_groups');
+        setQuizGroupSize(preferences.data.group_size || 'small');
+        setQuizTimes(preferences.data.preferred_times || []);
+      }
+      if (submissions.data) setMySubmissions(submissions.data);
+      setQuizLoading(false);
+    }
+    loadUserPreferences();
+    return () => { cancelled = true; };
+  }, [user?.id]);
+
   useEffect(() => {
     let cancelled = false;
     async function loadSavedEvents() {
