@@ -110,6 +110,59 @@ export default function App() {
   }, [user?.id]);
 
   useEffect(() => {
+    if (page !== 'people' || !user) return;
+    if (discoveryEventId && joinedEventIds.includes(discoveryEventId)) return;
+    setDiscoveryEventId(joinedEventIds[0] || '');
+  }, [page, user?.id, discoveryEventId, joinedEventIds]);
+
+  useEffect(() => {
+    if (page !== 'people' || !supabase || !user || !discoveryEventId) {
+      setDiscoveryPeople([]);
+      return;
+    }
+    let cancelled = false;
+    async function loadPeople() {
+      setPeopleBusy(true);
+      setSwipeNotice('');
+      const { data: participants, error: participantError } = await supabase
+        .from('event_participants')
+        .select('user_id')
+        .eq('event_id', discoveryEventId)
+        .neq('status', 'cancelled')
+        .neq('user_id', user.id);
+      if (cancelled) return;
+      if (participantError) {
+        setSwipeNotice(participantError.message || 'Could not load event participants.');
+        setDiscoveryPeople([]);
+        setPeopleBusy(false);
+        return;
+      }
+      const ids = [...new Set((participants || []).map(row => row.user_id))];
+      if (!ids.length) {
+        setDiscoveryPeople([]);
+        setSwipeNotice('No other visible participants for this event yet.');
+        setPeopleBusy(false);
+        return;
+      }
+      const { data: profiles, error: profileError } = await supabase
+        .from('profiles')
+        .select('id,display_name,bio,city,avatar_url')
+        .in('id', ids);
+      if (cancelled) return;
+      if (profileError) {
+        setSwipeNotice(profileError.message || 'Could not load participant profiles.');
+        setDiscoveryPeople([]);
+      } else {
+        setDiscoveryPeople(profiles || []);
+        if (!profiles?.length) setSwipeNotice('No other visible participants for this event yet.');
+      }
+      setPeopleBusy(false);
+    }
+    loadPeople();
+    return () => { cancelled = true; };
+  }, [page, user?.id, discoveryEventId]);
+
+  useEffect(() => {
     if (!toast) return;
     const id = window.setTimeout(() => setToast(''), 3200);
     return () => window.clearTimeout(id);
@@ -151,6 +204,28 @@ export default function App() {
       setJoinBusy(false);
     }
   }
+  async function handleSwipe(person, action) {
+    if (!user) { navigate('login'); return; }
+    if (!supabase || !discoveryEventId || swipeBusy) return;
+    setSwipeBusy(true);
+    setSwipeNotice('');
+    try {
+      const { data, error } = await supabase.rpc('record_event_swipe', {
+        p_event_id: discoveryEventId,
+        p_target_user_id: person.id,
+        p_action: action
+      });
+      if (error) throw error;
+      const result = Array.isArray(data) ? data[0] : data;
+      setDiscoveryPeople(previous => previous.filter(item => item.id !== person.id));
+      setSwipeNotice(result?.matched ? 'It is a mutual match. Messaging is not connected in this preview yet.' : action === 'like' ? 'Interest recorded for this event.' : 'Profile skipped.');
+    } catch (error) {
+      setSwipeNotice(error.message || 'Could not record your choice. Please try again.');
+    } finally {
+      setSwipeBusy(false);
+    }
+  }
+
   async function handleAuth(event) {
     event.preventDefault(); setAuthMessage('');
     if (!email.trim() || !password) { setAuthMessage('Enter your email and password.'); return; }
