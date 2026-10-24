@@ -29,11 +29,31 @@ Open the local URL printed by Vite. Without environment variables, the UI runs i
 
 ## Supabase setup
 
-1. Create a Supabase project for development.
-2. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in `.env.local` and the deployment provider.
-3. Apply migrations in timestamp order from `supabase/migrations/` in a non-production project first. Review and test every RLS policy and RPC before production.
-4. Configure email confirmation, allowed redirect URLs, password policy, Auth abuse protection, backups, and monitoring.
-5. Provision admin access only through trusted server-side tooling. Never expose a Supabase service-role key in a `VITE_*` variable or client bundle.
+### Configure the app
+
+The repository intentionally does **not** contain `.env.local`. It holds your project-specific configuration and should stay on your own machine, not in Git. The root `.gitignore` now excludes local environment files.
+
+1. In Supabase, open your new Maria project and go to **Project Settings → API Keys**.
+2. Copy the **Project URL** and the **Publishable key** (starts with `sb_publishable_`). The legacy `anon` key can also be used with this app.
+3. On a computer with the repository checked out, copy `.env.example` to a new file named `.env.local` in the repository root.
+4. Put your values in the file using these exact variable names, without adding any other keys:
+
+   ```dotenv
+   VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+   VITE_SUPABASE_ANON_KEY=sb_publishable_replace_with_your_value
+   ```
+
+   Replace both example values with the values from your Supabase dashboard. Do not commit `.env.local` or paste a database password, `service_role` key, or `sb_secret_` key into a `VITE_*` variable. Vite-exposed variables are included in the browser bundle; only the Supabase publishable/legacy anon key is suitable here.
+
+5. Restart the Vite development server after changing the file.
+
+If the website is being hosted instead of run locally, add the same two variable names in the hosting provider's **environment variables** settings and trigger a new deployment. Do not create a public GitHub file to store the actual credentials. The repository alone cannot determine which hosting provider/account you use.
+
+### Database setup and launch checks
+
+1. Apply migrations in timestamp order from `supabase/migrations/` in a non-production project first. Review and test every RLS policy and RPC before production.
+2. Configure email confirmation, allowed redirect URLs, password policy, Auth abuse protection, backups, and monitoring.
+3. Provision admin access only through trusted server-side tooling. Never expose a Supabase service-role key in a `VITE_*` variable or client bundle.
 
 The database migrations have been committed to the repository, including a policy hardening migration that restricts participation writes to published upcoming events. They **have not been applied to a Supabase project or tested against a live database**. Do not assume that the backend is live.
 
