@@ -80,7 +80,7 @@ Never rely on client-side checks for authorization. Use Postgres RLS and trusted
 ## Quality checks
 
 - `npm run build` runs the Vite production build.
-- `npm test` runs Node test files; meaningful automated tests still need to be added.
-- The CI workflow checks the frontend build; it does not validate SQL migrations, security policies, or real user flows.
+- `npm test` runs unit tests for the fail-closed adult-eligibility gate.
+- CI runs `npm test` and `npm run build`; neither replaces end-to-end authentication, account-deletion, SQL/RLS, or moderation tests.
 
 Do not interpret a successful frontend build as proof of security or end-to-end correctness. The Terms and Privacy pages are drafts and require review by qualified counsel for the actual operator, launch jurisdiction, and live data practices.
