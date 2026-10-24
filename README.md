@@ -59,10 +59,11 @@ If the website is being hosted instead of run locally, add the same two variable
    - Migration `202610240010_security_permissions_and_active_discovery.sql` removes broad default Data API grants, restricts trigger-only function execution, and limits profile discovery and social operations to published upcoming events.
    - Migration `202610240011_saved_events.sql` adds an RLS-protected saved-event list per authenticated user.
    - Migration `202610240012_private_rls_helpers.sql` moves RLS-only security-definer helpers into a non-exposed schema and leaves only the intended group-join and event-swipe RPCs callable by signed-in clients.
+   - Migration `202610240013_foreign_key_indexes.sql` adds indexes for foreign-key lookups highlighted by Supabase's performance advisor.
 2. Configure email confirmation, allowed redirect URLs, password policy, Auth abuse protection, backups, and monitoring.
 3. Provision admin access only through trusted server-side tooling. Never expose a Supabase service-role key in a `VITE_*` variable or client bundle.
 
-The connected Supabase project currently has migrations 001–012 applied. The 13 application tables have RLS enabled and are empty; adult eligibility is false by default, and live attendee discovery, participation, matching, groups, and messaging remain fail-closed until a trusted verification workflow exists. The schema is not a production launch: authentication redirect/email settings, hosting, moderation, and end-to-end tests still need work. The Supabase connector records server-generated migration version IDs that differ from this repository's filename prefixes; reconcile local and remote migration history before using the Supabase CLI to push further migrations, and do not run a blind `db push`.
+The connected Supabase project currently has migrations 001–013 applied. The 13 application tables have RLS enabled and are empty; adult eligibility is false by default, and live attendee discovery, participation, matching, groups, and messaging remain fail-closed until a trusted verification workflow exists. The schema is not a production launch: authentication redirect/email settings, hosting, moderation, and end-to-end tests still need work. The Supabase connector records server-generated migration version IDs that differ from this repository's filename prefixes; reconcile local and remote migration history before using the Supabase CLI to push further migrations, and do not run a blind `db push`.
 
 ## Security and traffic control
 
