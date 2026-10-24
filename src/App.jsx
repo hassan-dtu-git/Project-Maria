@@ -84,6 +84,9 @@ export default function App() {
   const [moderationQueue, setModerationQueue] = useState([]);
   const [moderationBusyId, setModerationBusyId] = useState('');
   const [moderationMessage, setModerationMessage] = useState('');
+  const [safetyReports, setSafetyReports] = useState([]);
+  const [reportModerationMessage, setReportModerationMessage] = useState('');
+  const [reportModerationBusyId, setReportModerationBusyId] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -118,6 +121,20 @@ export default function App() {
         return;
       }
       setModerationQueue(submissions || []);
+      const { data: reports, error: reportsError } = await supabase
+        .from('reports')
+        .select('id,reporter_id,reported_user_id,event_id,message_id,reason,details,status,created_at')
+        .in('status', ['open', 'reviewing'])
+        .order('created_at', { ascending: true })
+        .limit(100);
+      if (cancelled) return;
+      if (reportsError) {
+        setSafetyReports([]);
+        setReportModerationMessage('Could not load safety reports. Check admin access and try again.');
+      } else {
+        setSafetyReports(reports || []);
+        setReportModerationMessage('');
+      }
       setModerationMessage('');
     }
     loadAdminState();
@@ -474,6 +491,25 @@ export default function App() {
   }
 
 
+  async function updateSafetyReport(report, status) {
+    if (!supabase || !user || !isAdmin || reportModerationBusyId) return;
+    setReportModerationBusyId(report.id);
+    setReportModerationMessage('');
+    try {
+      const update = { status, resolved_at: status === 'resolved' || status === 'dismissed' ? new Date().toISOString() : null };
+      const { error } = await supabase.from('reports').update(update).eq('id', report.id);
+      if (error) throw error;
+      setSafetyReports(current => status === 'reviewing'
+        ? current.map(item => item.id === report.id ? { ...item, ...update } : item)
+        : current.filter(item => item.id !== report.id));
+      setReportModerationMessage(status === 'reviewing' ? 'Report marked as under review.' : 'Report closed.');
+    } catch (error) {
+      setReportModerationMessage(error.message || 'Could not update this report.');
+    } finally {
+      setReportModerationBusyId('');
+    }
+  }
+
   async function reviewSubmission(item, status) {
     if (!supabase || !user || !isAdmin) return;
     const note = window.prompt(status === 'approved' ? 'Optional moderator note for approval:' : 'Reason for rejecting this submission:');
@@ -789,6 +825,14 @@ export default function App() {
             <div className="eyebrow">{item.category} · Submitted {new Date(item.created_at).toLocaleDateString()}</div><h2>{item.title}</h2><p>{item.description}</p><p className="muted">{item.venue_name}, {item.city} · {new Date(item.starts_at).toLocaleString()}</p>{item.ends_at && <p className="muted">Ends {new Date(item.ends_at).toLocaleString()}</p>}{item.booking_url && <p><a href={item.booking_url} target="_blank" rel="noreferrer">Open event source ↗</a></p>}
             <div className="moderation-actions"><button className="button" disabled={!!moderationBusyId} onClick={()=>reviewSubmission(item,'approved')}>Approve</button><button className="button button-outline" disabled={!!moderationBusyId} onClick={()=>reviewSubmission(item,'rejected')}>Reject</button></div>
           </article>)}</div> : <div className="empty-state"><Check size={27}/><h3>Queue is clear</h3><p>No pending event submissions.</p></div>}
+          <div className="section-heading" style={{marginTop:'3rem'}}><div><div className="eyebrow">SAFETY</div><h2>Safety reports</h2><p>Reports are visible to authorized administrators only. Handle details confidentially.</p></div></div>
+          {reportModerationMessage && <p className="form-message" role="status">{reportModerationMessage}</p>}
+          {safetyReports.length ? <div className="submission-list">{safetyReports.map(report=><article className="moderation-card" key={report.id}>
+            <div className="eyebrow">{report.reason.replaceAll('_',' ')} · {report.status} · {new Date(report.created_at).toLocaleString()}</div>
+            <p>{report.details || 'No additional details supplied.'}</p>
+            <p className="muted">Report ID: {report.id} · Target: {report.reported_user_id ? 'profile' : report.event_id ? 'event' : 'message'}</p>
+            <div className="moderation-actions"><button className="button button-outline" disabled={!!reportModerationBusyId} onClick={()=>updateSafetyReport(report,'reviewing')}>Mark reviewing</button><button className="button" disabled={!!reportModerationBusyId} onClick={()=>updateSafetyReport(report,'resolved')}>Resolve</button><button className="button button-outline" disabled={!!reportModerationBusyId} onClick={()=>updateSafetyReport(report,'dismissed')}>Dismiss</button></div>
+          </article>)}</div> : <div className="empty-state"><ShieldCheck size={27}/><h3>No open safety reports</h3><p>New reports will appear here when submitted.</p></div>}
         </>}
       </section>}
 \n      {page === 'submit-event' && <section className="page-section narrow">
