@@ -6,13 +6,14 @@ Maria is an event-first social discovery website: discover an event, find people
 
 The `build/mvp-foundation` branch contains:
 - Responsive React/Vite landing page and event discovery with search/category filters.
-- Event details, in-page saved-event list, and responsive navigation.
+- Event details, responsive navigation, and a Supabase-backed feed for published future events when the project is configured; sample listings remain as a preview fallback.
+- Signed-in users can mark interest in published events; participation writes are protected by RLS policies. The interface explicitly notes that participant discovery and matching are not yet connected.
 - Safety guidance, community guidelines, and draft Terms and Privacy pages.
 - Sign-up/login UI with optional Supabase Auth integration.
 - Supabase/Postgres schema migrations for profiles, events, participation, swipes, matches, groups, messages, blocks, reports, terms acceptance, RLS, event-scoped swipe/match RPC, and basic swipe rate limiting.
 - CI workflow for a production frontend build.
 
-**This is still a prototype, not a production-ready service.** Event listings are sample data. Saved events are in-memory only. The website's reporting UI is not connected to the reports table or a moderator queue. Real event discovery, persistent saved events, matching UI, group join UI, messaging UI, profile editing, account deletion, password recovery, moderation operations, and comprehensive rate limits are not implemented.
+**This is still a prototype, not a production-ready service.** If Supabase is configured and has published future events, the website loads those listings and persists event interest; otherwise it uses sample listings. Saved events are in-memory only. The website's reporting UI is not connected to the reports table or a moderator queue. Real event discovery, persistent saved events, matching UI, group join UI, messaging UI, profile editing, account deletion, password recovery, moderation operations, and comprehensive rate limits are not implemented.
 
 ## Run locally
 
@@ -34,7 +35,7 @@ Open the local URL printed by Vite. Without environment variables, the UI runs i
 4. Configure email confirmation, allowed redirect URLs, password policy, Auth abuse protection, backups, and monitoring.
 5. Provision admin access only through trusted server-side tooling. Never expose a Supabase service-role key in a `VITE_*` variable or client bundle.
 
-The database migrations have been committed to the repository, but **they have not been applied to a Supabase project or tested against a live database**. Do not assume that the backend is live.
+The database migrations have been committed to the repository, including a policy hardening migration that restricts participation writes to published upcoming events. They **have not been applied to a Supabase project or tested against a live database**. Do not assume that the backend is live.
 
 ## Security and traffic control
 
