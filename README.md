@@ -30,7 +30,17 @@ npm run dev
 ```
 
 Open the local URL printed by Vite. Without environment variables, the UI runs in preview mode and authentication intentionally does not pretend to create real accounts.
+### GitHub Pages deployment
 
+GitHub Pages can host the static frontend, but it does not provide a backend environment. In your GitHub repository:
+
+1. Open **Settings → Pages → Build and deployment**.
+2. Set **Source** to **GitHub Actions**.
+3. Open **Settings → Secrets and variables → Actions → Variables**.
+4. Add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` as repository variables. These browser keys are not service-role secrets.
+5. Push or merge to the `main` branch. The Pages workflow will build and deploy `dist` automatically.
+
+The site will use the repository URL `https://hassan-dtu-git.github.io/Project-Maria/`. If you configure a custom domain later, update the Vite `base` configuration and the GitHub Pages workflow accordingly.
 ## Supabase setup
 
 ### Configure the app
@@ -76,6 +86,31 @@ Apply migrations in timestamp order from `supabase/migrations/` in a development
 3. Configure email confirmation, password policy, Auth abuse protection, backups, and monitoring. Confirm the project can deliver recovery emails before relying on password resets.
 4. The `delete-account` Edge Function handles CORS preflight and validates the signed user JWT inside the handler. Its gateway `verify_jwt` check is disabled so browser `OPTIONS` requests can reach the handler; unauthenticated requests still fail the handler's token validation. Deletion requires a fresh password-authentication method and exact `DELETE` confirmation, revokes refresh sessions where possible, then calls the Auth admin API. Its privileged secret is read only from the server-side Edge Function environment.
 5. Provision admin access only through trusted server-side tooling. Never expose a Supabase service-role key in a `VITE_*` variable or client bundle.
+
+### Owner admin account setup
+
+After your account has signed up and its `public.profiles` row exists, open the Supabase SQL Editor for that project and run:
+
+```sql
+update public.profiles
+set is_admin = true
+where id = (
+  select id
+  from auth.users
+  where lower(email) = lower('mypykvskaju@gmail.com')
+);
+```
+
+Verify the result before continuing:
+
+```sql
+select p.id, u.email, p.is_admin
+from public.profiles p
+join auth.users u on u.id = p.id
+where u.email = 'mypykvskaju@gmail.com';
+```
+
+Do not paste a second email into the query before you intentionally want to grant admin access. Open the admin login with `http://localhost:5173/#admin-login` locally, or `https://your-site.example/#admin-login` after deployment. Normal sign-up and login pages do not grant administrator access.
 
 The connected Supabase project currently has migrations 001–014 applied. The 13 application tables have RLS enabled and are empty; adult eligibility is false by default, and live attendee discovery, participation, matching, groups, and messaging remain fail-closed until a trusted verification workflow exists. The schema is not a production launch: authentication redirect/email settings, hosting, moderation, and end-to-end tests still need work. The Supabase connector records server-generated migration version IDs that differ from this repository's filename prefixes; reconcile local and remote migration history before using the Supabase CLI to push further migrations, and do not run a blind `db push`.
 
