@@ -13,7 +13,7 @@ The `build/mvp-foundation` branch contains:
 - Supabase/Postgres schema migrations for profiles, events, participation, swipes, matches, groups, messages, blocks, reports, terms acceptance, RLS, event-scoped swipe/match RPC, and basic swipe rate limiting.
 - CI workflow for a production frontend build.
 
-**This is still a prototype, not a production-ready service.** If Supabase is configured and has published future events, the website loads those listings and persists event interest; otherwise it uses sample listings. Saved events are in-memory only. The website's reporting UI is not connected to the reports table or a moderator queue. Real event discovery, persistent saved events, matching UI, group join UI, messaging UI, profile editing, account deletion, password recovery, moderation operations, and comprehensive rate limits are not implemented.
+**This is still a prototype, not a production-ready service.** If Supabase is configured and has published future events, the website loads those listings and persists event interest; otherwise it uses sample listings. Saved events are in-memory only. The website's reporting UI is not connected to the reports table or a moderator queue. Event-scoped participant discovery and swipe actions now call the Supabase policies/RPC when configured, but they have not been tested against a live database. Persistent saved events, group join UI, messaging UI, profile editing, account deletion, password recovery, moderation operations, and comprehensive rate limits are not implemented.
 
 ## Run locally
 
