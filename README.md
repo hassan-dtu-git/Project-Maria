@@ -11,7 +11,7 @@ The `build/mvp-foundation` branch contains:
 - Adult verification defaults to false and cannot be set by a normal browser session. A real verification workflow is not implemented; do not manually mark ordinary accounts verified.
 - Safety guidance, community guidelines, and draft Terms and Privacy pages.
 - Sign-up/login UI with optional Supabase Auth integration.
-- Supabase Auth password recovery: request a reset email, return through the allowlisted `#reset-password` route, and update the password in a recovery session.
+- Supabase Auth password recovery: request a reset email, return to an allowlisted app origin, handle the recovery session, then show the `#reset-password` form to update the password.
 - Signed-in users can edit their own display name, bio, and city through the RLS-protected profiles table.
 - Supabase/Postgres schema migrations for profiles, events, participation, swipes, matches, groups, messages, blocks, reports, terms acceptance, RLS, event-scoped swipe/match RPC, and basic swipe rate limiting.
 - CI workflow for a production frontend build.
@@ -63,7 +63,7 @@ If the website is being hosted instead of run locally, add the same two variable
    - Migration `202610240012_private_rls_helpers.sql` moves RLS-only security-definer helpers into a non-exposed schema and leaves only the intended group-join and event-swipe RPCs callable by signed-in clients.
    - Migration `202610240013_foreign_key_indexes.sql` adds indexes for foreign-key lookups highlighted by Supabase's performance advisor.
    - Migration `202610240014_rls_initplan_optimization.sql` updates remaining ownership/admin policies to evaluate `auth.uid()` once per statement, preserving their existing access rules.
-2. In **Authentication → URL Configuration**, keep the Site URL set to the actual deployed app URL and add the development and production origins to Redirect URLs. Include `http://localhost:5173/**` for local Vite development and the actual production origin with `/**`; do not allow arbitrary external domains. The recovery flow redirects to the app's `#reset-password` route, so its origin must be allowlisted.
+2. In **Authentication → URL Configuration**, keep the Site URL set to the actual deployed app URL and add the development and production app URLs to Redirect URLs. Include `http://localhost:5173/**` for local Vite development and the actual production origin with `/**`; do not allow arbitrary external domains. The recovery link returns to the app origin so Supabase can process the recovery token; the app then switches to its internal `#reset-password` page.
 3. Configure email confirmation, password policy, Auth abuse protection, backups, and monitoring. Confirm the project can deliver recovery emails before relying on password resets.
 4. Provision admin access only through trusted server-side tooling. Never expose a Supabase service-role key in a `VITE_*` variable or client bundle.
 
