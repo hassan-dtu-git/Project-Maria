@@ -251,7 +251,19 @@ export default function App() {
       }));
     }
     loadEvents();
-    return () => { cancelled = true; };
+    const channel = supabase.channel('published-events-feed')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, () => {
+        if (!cancelled) loadEvents();
+      })
+      .subscribe();
+    const refreshInterval = window.setInterval(() => {
+      if (!cancelled) loadEvents();
+    }, 60000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(refreshInterval);
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   useEffect(() => {
