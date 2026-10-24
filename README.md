@@ -56,10 +56,11 @@ If the website is being hosted instead of run locally, add the same two variable
    - Migration `202610240007_participation_policy_hardening.sql` introduces a default-false adult eligibility flag and allows participation only for verified adults attending published upcoming events.
    - Migration `202610240008_data_api_table_grants.sql` explicitly grants only the browser operations covered by RLS; grants determine whether a role can reach a table, while RLS determines which rows it can access.
    - Migration `202610240009_adult_verification_gate.sql` limits profile discovery, participant access, group membership, messaging, and match visibility to eligible adult users and preserves block checks.
+   - Migration `202610240010_security_permissions_and_active_discovery.sql` removes broad default Data API grants, restricts trigger-only function execution, and limits profile discovery and social operations to published upcoming events.
 2. Configure email confirmation, allowed redirect URLs, password policy, Auth abuse protection, backups, and monitoring.
 3. Provision admin access only through trusted server-side tooling. Never expose a Supabase service-role key in a `VITE_*` variable or client bundle.
 
-The migrations are versioned in the repository, but their application status is specific to each Supabase project. Confirm the migration history and test RLS, RPC behavior, and the adult-eligibility fail-closed behavior in the target project; a successful migration does not establish that a complete verification process or production safety operations exist.
+The connected Supabase project currently has migrations 001–010 applied. The 12 application tables have RLS enabled and are empty; adult eligibility is false by default, and live attendee discovery, participation, matching, groups, and messaging remain fail-closed until a trusted verification workflow exists. The schema is not a production launch: authentication redirect/email settings, hosting, moderation, and end-to-end tests still need work. The Supabase connector records server-generated migration version IDs that differ from this repository's filename prefixes; reconcile local and remote migration history before using the Supabase CLI to push further migrations, and do not run a blind `db push`.
 
 ## Security and traffic control
 
