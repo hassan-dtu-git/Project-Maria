@@ -52,6 +52,44 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!supabase) return;
+    let cancelled = false;
+    async function loadEvents() {
+      const { data, error } = await supabase.from('events')
+        .select('id,title,description,category,venue_name,city,starts_at,booking_url')
+        .eq('published', true)
+        .gte('starts_at', new Date().toISOString())
+        .order('starts_at', { ascending: true })
+        .limit(100);
+      if (cancelled) return;
+      if (error) {
+        setEventsLoadError('Could not load live events. Preview listings are shown instead.');
+        return;
+      }
+      const colors = ['lavender', 'peach', 'mint', 'sky', 'rose', 'butter'];
+      setLiveEvents((data || []).map(row => {
+        const icon = /music|concert|gig/i.test(row.category) ? Music2
+          : /art|creative|craft/i.test(row.category) ? Sparkles
+          : /outdoor|sport|run|hike/i.test(row.category) ? Compass
+          : /film|culture|theatre|museum/i.test(row.category) ? CalendarDays
+          : /food|coffee|social|game/i.test(row.category) ? Users : MessageCircle;
+        const hash = String(row.id).split('').reduce((n, c) => n + c.charCodeAt(0), 0);
+        return {
+          id: row.id, title: row.title, category: row.category,
+          date: new Date(row.starts_at).toLocaleString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }),
+          place: [row.venue_name, row.city].filter(Boolean).join(', '),
+          people: 0, price: row.booking_url ? 'See event details' : 'Check with organizer',
+          color: colors[hash % colors.length], icon,
+          description: row.description || 'Meet people interested in attending this event.',
+          bookingUrl: row.booking_url, isLive: true
+        };
+      }));
+    }
+    loadEvents();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
     if (!toast) return;
     const id = window.setTimeout(() => setToast(''), 3200);
     return () => window.clearTimeout(id);
